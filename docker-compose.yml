@@ -20,8 +20,6 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
-    # Optional: extra settings (SMTP, SMS, ...) from backend/.env. A fresh
-    # clone works without it; values below fall back to safe demo defaults.
     env_file:
       - path: ./backend/.env
         required: false
@@ -37,8 +35,13 @@ services:
       OCR_PROVIDER: ${OCR_PROVIDER:-tesseract}
       EXTRACTION_PROVIDER: ${EXTRACTION_PROVIDER:-regex}
       TRANSLATE_ENABLED: ${TRANSLATE_ENABLED:-true}
-      # Demo mode tolerates the default JWT secret. Set DEMO_MODE=false (and a
-      # real JWT_SECRET) in the root .env for anything beyond local demos.
+      OLLAMA_ENABLED: ${OLLAMA_ENABLED:-false}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-qwen3:4b}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-bge-m3}
+      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-120}
+      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-4096}
+      NOTIFICATIONS_ENABLED: ${NOTIFICATIONS_ENABLED:-false}
       DEMO_MODE: ${DEMO_MODE:-true}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     ports:
@@ -50,8 +53,6 @@ services:
     build:
       context: ./frontend
       args:
-        # Inlined into the browser bundle at build time; must be the URL the
-        # *browser* uses to reach the backend, not the in-network service name.
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
     restart: unless-stopped
     depends_on:
