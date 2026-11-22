@@ -1,15 +1,52 @@
 # Project state
 
-**Bhoomi_setu** is the platform; **BhoomiTrust AI** is the existing land-record module inside it. Goal: a Document AI layer (multi-document upload, OCR, cited question answering, quote/claim verification, contradiction and amendment tracking, human review) on top of the land-record app, without breaking it.
+**Bhoomi_setu** is the platform; **BhoomiTrust AI** is the existing land-record module. The goal is to add a trustworthy Document AI layer (multi-document ingestion, OCR, cited Q&A, quote/claim verification, contradiction and amendment analysis, human review) without replacing or breaking the land-record application.
 
-- Stack: Next.js 14 + TypeScript + Tailwind (`frontend/`), FastAPI + Motor (`backend/`), MongoDB, Docker Compose (3000 / 8000 / 27017).
-- Backend layout: `routers/` (auth, documents, records, dashboard, search, audit, **document_ai**), `services/` (pipeline, ocr, extraction, validation, confidence, anomaly, verification, audit, **docai**), `deps.py` (auth + ownership helpers).
-- Branches: `dev` is the integration target, never push to `main`. Feature branches: `neha_frontend` (Neha), `pakhi_backend` (Pakhi), `cleanup/audit-security-hardening`, `docs/handoff-audit-findings`, `infra/docker-docs-fixes` (the last three are already contained in `dev` at `09fab17`).
-- API contract: `docs/API_CONTRACT.md` (implementation notes at the bottom). Existing API: `docs/API.md`.
-- Env: Python 3.12, Tesseract (+ `hin`, `kan` data for the Indic OCR test), poppler, Node for the frontend. Install backend with `requirements-dev.txt`.
+## Repository and architecture
 
-## Security decisions
-- Ownership policy: ADMIN and REVENUE_OFFICER see everything (reviewers); a DATA_ENTRY_OPERATOR only sees documents they uploaded plus the records, audit rows, search hits, stats and CSV derived from them. Another user's resource answers 404 (no existence leak). Helpers live in `backend/app/deps.py`.
-- `/api/search` escapes the query (`re.escape`) instead of passing it to Mongo as a regex.
-- `GET /api/records/public-verify/{id}` stays public on purpose (QR certificate check, exposes only hash + status).
-- The Fast2SMS key that was committed earlier is still in Git history: rotate it.
+- Integration branch: `dev`. Never push directly to `main`.
+- Frontend: Next.js 14, TypeScript, Tailwind in `frontend/`.
+- Backend: FastAPI + Motor in `backend/`; MongoDB; Docker Compose services use ports 3000 / 8000 / 27017.
+- Backend routers include auth, documents, records, dashboard, search, audit and `document_ai`.
+- Services include the existing OCR/extraction/validation/verification pipeline and `services/docai`.
+- Document AI API contract: `docs/API_CONTRACT.md`; existing API documentation: `docs/API.md`.
+
+## Current Document AI implementation (code-level snapshot)
+
+- Indexing jobs and PDF text/OCR extraction exist.
+- Retrieval is BM25 lexical ranking; dense embeddings and hybrid retrieval are not implemented.
+- Q&A is extractive: returned claims are source passages, not local-LLM-generated synthesis.
+- Page-level evidence and backend quote verification exist.
+- Abstention uses lexical key-term coverage heuristics; it is not a semantic guarantee.
+- Faithfulness is a verified-claim ratio, not a calibrated probability of truth.
+- Contradiction detection is rule-based and currently focuses on numeric facts such as percentages, INR amounts, area and duration.
+- Amendment handling requires explicit amendment cues, a base-document reference and an effective date that has arrived; unresolved cases need human review.
+- Claim review is restricted to Revenue Officers and audited.
+- A dedicated Document AI frontend, local LLM integration, BGE-M3 embeddings and semantic clause comparison remain future work.
+
+See `docs/IMPLEMENTATION_PROGRESS.md` for the detailed status and unverified test matrix. Do not treat historical test output as a fresh test run.
+
+## Security and access decisions
+
+- ADMIN and REVENUE_OFFICER are privileged reviewer roles.
+- DATA_ENTRY_OPERATOR access is scoped to resources they own/upload, according to the backend ownership helpers.
+- Foreign resources should return 404 to avoid leaking their existence.
+- `/api/search` must escape user search input before regex use.
+- `GET /api/records/public-verify/{id}` is intentionally public for QR certificate verification and must expose only the intended verification fields.
+- Keep Document AI additive under `/api/document-ai`; do not reinterpret land-record `overall_confidence` as Document AI `faithfulness_score`.
+
+## Local inference direction
+
+- Document AI must not require external AI inference APIs or cloud API keys.
+- Planned local runtime: Ollama; initial chat model candidate `qwen3:4b`; initial embedding candidate `bge-m3`.
+- These are candidate models, not yet integrated or benchmarked.
+- For a backend running in Docker on macOS, configure the Ollama host explicitly (often `http://host.docker.internal:11434`); container `localhost` is not the Mac host.
+- Do not expose the Ollama service publicly. A public deployment needs a separately secured inference host.
+- Model downloads require internet initially; local inference can operate offline after weights are available.
+
+## Environment and maintenance
+
+- Backend development baseline: Python 3.12; Tesseract and Poppler are used by document processing. Install development dependencies from `backend/requirements-dev.txt`.
+- OCR languages require the corresponding Tesseract traineddata files.
+- A previously committed Fast2SMS credential was reported in Git history. Rotate it immediately if still active; never copy secrets into tracked files. History rewriting is a separate coordinated operation.
+- Before release, run backend tests, frontend lint/build, Docker build/compose checks, and the documented end-to-end workflow. Record exact results.
