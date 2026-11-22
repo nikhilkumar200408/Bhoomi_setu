@@ -1,0 +1,81 @@
+"""
+Domain enums and document-shape constants for BhoomiTrust AI.
+
+MongoDB is schemaless, so there are no ORM model classes here anymore —
+documents are plain dicts validated against the Pydantic schemas in
+schemas.py at the API boundary. This module keeps the shared enums/constants
+so the rest of the codebase (routers, services) can still write
+`models.UserRole.ADMIN`, `models.RecordStatus.VERIFIED`, etc.
+"""
+import enum
+import uuid
+from datetime import datetime
+
+
+def gen_uuid() -> str:
+    return str(uuid.uuid4())
+
+
+def utcnow() -> datetime:
+    return datetime.utcnow()
+
+
+class UserRole(str, enum.Enum):
+    ADMIN = "ADMIN"
+    DATA_ENTRY_OPERATOR = "DATA_ENTRY_OPERATOR"
+    REVENUE_OFFICER = "REVENUE_OFFICER"
+
+
+class DocumentStatus(str, enum.Enum):
+    UPLOADED = "UPLOADED"
+    PROCESSING = "PROCESSING"
+    PROCESSED = "PROCESSED"
+    FAILED = "FAILED"
+
+
+class RecordStatus(str, enum.Enum):
+    PENDING_REVIEW = "PENDING_REVIEW"
+    AUTO_PASSED = "AUTO_PASSED"
+    VERIFIED = "VERIFIED"
+    REJECTED = "REJECTED"
+    UNRESOLVED = "UNRESOLVED"
+
+
+class ConfidenceBand(str, enum.Enum):
+    HIGH = "HIGH"
+    REVIEW = "REVIEW"
+    VERIFY = "VERIFY"
+
+
+LAND_RECORD_FIELDS = [
+    "owner_name", "survey_number", "khasra_number", "khata_number",
+    "plot_area", "village", "tehsil", "district", "land_classification",
+    "ownership_details", "mutation_number", "mutation_date",
+    "registration_number", "registration_date",
+]
+
+# ---------------------------------------------------------------------------
+# Document shape reference (each is a plain dict stored in its collection):
+#
+# users:      {_id, username, full_name, hashed_password, role, created_at}
+#
+# documents:  {_id, filename, stored_path, file_type, file_size_bytes,
+#              status, uploaded_by, uploaded_at, processed_at,
+#              error_message}
+#
+# records:    {_id, document_id, status, overall_confidence, anomaly_score,
+#              anomaly_level, anomaly_reasons, created_at, verified_at,
+#              verified_by,
+#              fields: [ {id, field_name, value, confidence, ocr_confidence,
+#                         extraction_confidence, confidence_band,
+#                         source_page, source_bbox, source_text,
+#                         review_reason, validation_status} ],
+#              validations: [ {id, rule, status, severity, message,
+#                              affected_field, created_at} ],
+#              verification_actions: [ {id, action, field_name, old_value,
+#                                       new_value, reason, user_id,
+#                                       timestamp} ]}
+#
+# audit:      {_id, record_id, document_id, action, user_id, old_value,
+#              new_value, log_metadata, timestamp}
+# ---------------------------------------------------------------------------
