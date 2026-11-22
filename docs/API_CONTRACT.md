@@ -1,6 +1,6 @@
 # Document AI API Contract
 
-**Project:** BhoomiTrust AI — Zero-Guessing & Contradiction-Checking Document AI  
+**Project:** Bhoomi_setu — Zero-Guessing & Contradiction-Checking Document AI  
 **Contract version:** 1.0.0  
 **Target branch:** `dev`  
 **Status:** Proposed interface for the new cross-document intelligence module. These endpoints are **not implemented yet** unless explicitly marked “existing” below.

@@ -1,4 +1,4 @@
-# BhoomiTrust AI
+# Bhoomi_setu
 
 ### AI-Powered Land Record Digitization & Validation System
 **SIH 2026 · PS 26018 — Intelligent Land Record Digitization and Validation System**
@@ -9,9 +9,11 @@
 
 ---
 
+> **Note:** sections 4, 9, 12 and 14 still describe an earlier demo-scenario design (demo OCR/extraction scenarios, Officer/Reviewer roles). The implemented pipeline uses real OCR and the roles in section 8. Those sections need a rewrite; see `docs/SESSION_HANDOFF.md`.
+
 ## 1. Overview
 
-BhoomiTrust AI converts legacy land documents (scanned PDFs, images, handwritten
+Bhoomi_setu is evolving into a zero-guessing, contradiction-checking Document AI platform (API contract: `docs/API_CONTRACT.md`). Its existing, working module is **BhoomiTrust AI**, the land-record workflow described below, which converts legacy land documents (scanned PDFs, images, handwritten
 records) into structured digital land records, then validates the extracted
 information, assigns field-level confidence, detects inconsistencies, and
 routes uncertain information to an authorized human for verification.
@@ -85,14 +87,18 @@ Next.js Frontend → FastAPI API → Document Service → Preprocessing → OCR
 ## 6. Quick start (Docker — recommended)
 
 ```bash
-cp .env.example .env          # edit if you have real LLM/OCR credentials
+cp .env.example .env          # optional: only needed to override defaults (JWT_SECRET, providers)
 docker compose up --build
+# Optional extras (SMTP/SMS): cp backend/.env.example backend/.env
 ```
 
 - Frontend: http://localhost:3000
 - Backend API + Swagger docs: http://localhost:8000/docs
-- The backend container automatically seeds demo users + all 5 demo
-  scenarios on first boot (see `backend/Dockerfile` CMD).
+- The backend container seeds demo users and three sample scans through the
+  real pipeline on every boot (see `backend/Dockerfile` CMD).
+- For anything beyond a local demo, set `DEMO_MODE=false` and a strong
+  `JWT_SECRET` (`openssl rand -hex 32`) in the root `.env`; the backend refuses
+  to start with the default secret when demo mode is off.
 
 ---
 
@@ -118,9 +124,9 @@ output with `[backend]` / `[frontend]`. Ctrl+C stops both cleanly.
 cd backend
 python3 -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # runtime + test deps (use requirements.txt for runtime only)
 cp .env.example .env            # defaults to mongodb://localhost:27017 — needs a local mongod
-python -m app.seed              # creates demo users + 5 demo scenarios
+python -m app.seed_real_data    # creates demo users + 3 sample scans (English/Hindi/Kannada)
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -141,13 +147,13 @@ Frontend is now running at http://localhost:3000.
 
 ## 8. Demo credentials
 
-Seeded automatically by `python -m app.seed` (or on first Docker boot):
+Seeded by `python -m app.seed_real_data` (and on every Docker boot):
 
 | Role     | Username   | Password      | Can do                                    |
 |----------|------------|---------------|---------------------------------------------|
-| Admin    | `admin`    | `Admin@123`   | Everything                                  |
-| Officer  | `officer`  | `Officer@123` | Upload & process documents                  |
-| Reviewer | `reviewer` | `Reviewer@123`| Edit fields, verify/approve/reject records  |
+| Admin            | `admin`           | `Admin@123`    | Read-only oversight, user activity          |
+| Data Entry Operator | `operator`     | `Operator@123` | Upload & process documents                  |
+| Revenue Officer  | `revenue_officer` | `Officer@123`  | Edit fields, verify/approve/reject records  |
 
 Credentials are provisioned out of band (seed script / admin) — the login
 page itself no longer displays or autofills them.
@@ -161,8 +167,8 @@ page itself no longer displays or autofills them.
   synthetic scenarios described below without needing a real file.
 - `sample-data/demo_scenarios.json` — the exact OCR evidence + extracted
   fields used by each scenario (for judges who want to inspect the raw data).
-- `sample-data/documents/*.pdf` — visual synthetic land-record PDFs matching
-  each scenario's OCR layout (old-style register formatting, page 1 + page 2).
+- `sample-data/*.png` and `backend/sample_data/*.png` — synthetic English, Hindi
+  and Kannada land-record scans used by the seed script and the tests.
 
 | Scenario            | What it demonstrates                                             |
 |----------------------|--------------------------------------------------------------------|
@@ -224,7 +230,7 @@ Written summary: [`docs/API.md`](docs/API.md)
 ```bash
 cd backend
 source venv/bin/activate
-python -m pytest tests/ -v
+python -m pytest tests/ -v   # needs requirements-dev.txt
 ```
 
 Covers: confidence engine, validation engine (including the area-mismatch
@@ -262,12 +268,12 @@ Docker Compose, Swagger docs.
 ## 15. Project structure
 
 ```text
-BhoomiTrust-AI/
+Bhoomi_setu/
 ├── frontend/            Next.js app (TypeScript, Tailwind, Recharts)
 ├── backend/              FastAPI app (services/, routers/, models, tests/)
 ├── database/             Schema reference notes
-├── sample-data/          Synthetic demo scenarios (JSON) + sample PDFs
-├── docs/                 API.md, ARCHITECTURE.md
+├── sample-data/          Synthetic demo scenarios (JSON) + sample scans
+├── docs/                 API.md, API_CONTRACT.md, ARCHITECTURE.md
 ├── .env.example
 ├── docker-compose.yml
 └── README.md
