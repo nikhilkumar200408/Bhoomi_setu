@@ -20,6 +20,14 @@ class Settings(BaseSettings):
 
     LLM_PROVIDER: str = "demo"
     LLM_API_KEY: str = ""
+    # Local Document AI inference is opt-in and never calls a cloud provider.
+    OLLAMA_ENABLED: bool = False
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_CHAT_MODEL: str = "qwen3:4b"
+    OLLAMA_EMBEDDING_MODEL: str = "bge-m3"
+    OLLAMA_TIMEOUT_SECONDS: int = 120
+    OLLAMA_NUM_CTX: int = 4096
+
     OCR_PROVIDER: str = "tesseract"       # demo | tesseract | paddleocr
     EXTRACTION_PROVIDER: str = "regex"    # demo | regex | llm
     TRANSLATE_ENABLED: bool = True        # deep-translator; requires outbound internet
@@ -40,23 +48,17 @@ class Settings(BaseSettings):
     # --- Notifications: fired when a record lands with anomaly_level=HIGH ---
     NOTIFICATIONS_ENABLED: bool = False
 
-    # Email (SMTP) — works with Gmail (use an App Password, not your normal
-    # password: https://myaccount.google.com/apppasswords) or any SMTP host.
+    # Email (SMTP)
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     NOTIFY_EMAIL_TO: str = ""
 
-    # SMS — pluggable, like the OCR/extraction providers.
-    # "fast2sms" (India-focused, simplest signup: https://www.fast2sms.com)
-    # "twilio" (international, needs a Twilio phone number)
-    # "none" disables SMS entirely.
+    # SMS provider configuration. Credentials must be supplied outside Git.
     SMS_PROVIDER: str = "none"          # none | fast2sms | twilio
-    NOTIFY_PHONE_NUMBER: str = ""       # 10-digit for fast2sms, E.164 (+91...) for twilio
-
+    NOTIFY_PHONE_NUMBER: str = ""
     FAST2SMS_API_KEY: str = ""
-
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_FROM_NUMBER: str = ""
