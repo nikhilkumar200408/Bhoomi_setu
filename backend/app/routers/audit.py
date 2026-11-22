@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 
 from .. import schemas
 from ..database import audit_collection
-from ..deps import get_current_user
+from ..deps import get_current_user, accessible_document_ids
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
@@ -15,7 +15,11 @@ async def list_audit_logs(
     limit: int = Query(200, le=1000),
     user: dict = Depends(get_current_user),
 ):
-    query = {"action": action} if action else {}
+    query: dict = {"action": action} if action else {}
+    doc_ids = await accessible_document_ids(user)
+    if doc_ids is not None:
+        # Operators only see audit entries for their own documents or their own actions.
+        query["$or"] = [{"document_id": {"$in": doc_ids}}, {"user_id": user["_id"]}]
     cursor = audit_collection.find(query).sort("timestamp", -1).limit(limit)
     logs = []
     async for log in cursor:

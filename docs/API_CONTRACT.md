@@ -3,7 +3,7 @@
 **Project:** Bhoomi_setu — Zero-Guessing & Contradiction-Checking Document AI  
 **Contract version:** 1.0.0  
 **Target branch:** `dev`  
-**Status:** Proposed interface for the new cross-document intelligence module. These endpoints are **not implemented yet** unless explicitly marked “existing” below.
+**Status:** Backend implemented on `dev` (all routes in sections 2.2–7). Frontend screens are **not** built yet. See "Implementation notes" at the end for where the backend deliberately differs from or narrows this contract.
 
 This contract is the shared agreement between frontend and backend contributors. Implement the request and response shapes as written. If a change is necessary, discuss it first and update this file in the same pull request.
 
@@ -529,6 +529,19 @@ Before merging the feature into `dev`, backend and frontend contributors must te
 11. Keep existing land-record upload, process, verification, and dashboard flows working.
 
 ---
+
+## Implementation notes (backend, `backend/app/routers/document_ai.py`)
+
+- **No LLM.** Answers are extractive: each claim is an exact sentence from an indexed page, ranked with BM25. The backend re-checks every quote against the stored page text before returning it. A question is answered only if a passage contains at least 50% of its key terms; otherwise the response abstains.
+- **`claims[].confidence`** = share of the question's key terms found in the cited passage (lexical coverage, not a probability). `SUPPORTED` needs >= 80% coverage, otherwise `PARTIALLY_SUPPORTED`. Claims from a document whose value was replaced by an effective amendment are `CONTRADICTED` with an explanation.
+- **Answer extras:** the answer also returns the `evidence` array (canonical evidence objects) and claims carry `requires_human_review` and `review`.
+- **Abstained answers** return `faithfulness_score: 0.0` (as in the example above); an answer with claims but none supported is also 0.0; `null` is only returned by the scoring helper for zero claims.
+- **Contradictions** are found by rules: same topic word + same unit (percent, rupees, area, duration), different values, not clearly different plot/clause numbers. A conflict is `RESOLVED_BY_AMENDMENT` only when the amending text uses amendment language, names the base document (filename or shared reference id), and states an effective date that has been reached. Amendment language without those facts is `NEEDS_HUMAN_REVIEW`; plain conflicts are `OPEN`; upload order is never used. `severity` is HIGH for percent/rupee values, MEDIUM otherwise. Dates like `01/02/2026` are read day-first.
+- **`relationship_confidence`** is always `null` (we do not compute one yet).
+- **Contradictions/amendments are computed on request** from the caller's indexed documents; ids are deterministic hashes of the evidence positions. `GET /amendments` without `document_ids` covers all of the caller's indexed documents. `UNRESOLVED` and `SUPERSEDED` are accepted as filters but not produced yet.
+- **Access:** operators only reach documents they uploaded; ADMIN and REVENUE_OFFICER reach all. Another user's document, answer or job returns 404. Claim review is REVENUE_OFFICER only and needs a reason for `REJECT` / `MARK_UNRESOLVED`.
+- **Error shape:** Document AI errors use the common `{"error": {...}}` shape. 401 and request-validation (422) errors still use FastAPI's `{"detail": ...}` shape.
+- **Indexing** runs as a FastAPI background task (PDF text layer first, Tesseract OCR for scanned pages and images). Selecting a document that is not indexed returns 409.
 
 ## Change policy
 
