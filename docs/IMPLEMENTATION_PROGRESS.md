@@ -1,50 +1,79 @@
 # Implementation progress
 
-Status key: Done, Partial, Not started, Blocked. Updated 2026-11-23 (second update).
+Status key: Done, Partial, Not started, Not verified. Updated 2026-11-23 after reviewing the current `dev` source.
 
-## Existing land-record application
+## Existing BhoomiTrust AI land-record application
+
 | Area | Status | Notes |
 |---|---|---|
-| Auth (JWT, bcrypt/argon2, roles) | Done | Ownership isolation not implemented; assigned to Pakhi |
-| Upload, batch upload, process pipeline (OpenCV, Tesseract eng/hin/kan, regex extraction) | Done | Kannada OCR test needs tessdata installed |
-| Records, verification with signature, audit log, dashboard, search | Done | |
-| Frontend for the above | Done | 3 lint warnings remain |
+| Auth (JWT, password hashing, roles) | Done in code | Regression tests still required after Document AI changes |
+| Upload and batch upload | Done in code | Validate size/type and ownership in tests |
+| OCR and extraction pipeline | Done in code | Scanned-PDF path and Indic language data need explicit verification |
+| Records, verification/signature, audit, dashboard, search | Done in code | Preserve existing behavior |
+| Existing frontend | Done in code | Prior handoff reports three lint warnings; re-run lint/build before release |
 
-## Document AI (`docs/API_CONTRACT.md`)
+## Document AI backend
+
 | Area | Status | Notes |
 |---|---|---|
-| Ingestion/indexing (PDF text, OCR for scans/images), jobs, idempotent re-index | Done (backend) | Lexical BM25 retrieval; no embeddings, no LLM |
-| Question answering with page-level citations, backend quote verification, abstention | Done (backend) | Extractive only |
-| Claim statuses, faithfulness (verified-claim ratio), re-verify endpoint, human review | Done (backend) | Review is REVENUE_OFFICER only, audited |
-| Contradiction detection, amendment tracking, effective dates, cycle check | Done (backend) | Rule-based: numeric facts (percent, rupees, area, duration) only |
-| Document AI frontend screens | Not started | Neha |
-| Pagination cursor, `UNRESOLVED`/`SUPERSEDED` states, non-numeric clause comparison, Hindi/Kannada question terms | Not done | Known limitations |
+| PDF text extraction/OCR indexing jobs | Partial | Implemented; scanned PDF and table quality not fully verified |
+| BM25 lexical retrieval | Done in code | No dense vectors yet |
+| Cross-document Q&A | Partial | Extractive source passages, not LLM-generated answers |
+| Page citations and quote verification | Done in code | Quotes are checked against stored page text |
+| Abstention | Partial | Lexical key-term coverage heuristic; requires evaluation |
+| Claim status and faithfulness | Partial | Verified-claim ratio; not a calibrated truth probability |
+| Contradiction detection | Partial | Rule-based numeric facts (percent, INR, area, duration) |
+| Amendment tracking | Partial | Basic explicit-cue/base-reference/effective-date rules |
+| Human review | Done in code | Revenue Officer only; source evidence remains unchanged |
+| Document AI frontend | Not started | Must use the documented API contract |
+| Local Ollama LLM | Not started | Configuration preparation is separate from a working integration |
+| BGE-M3 embeddings / vector retrieval | Not started | Requires storage design, indexing and evaluation |
+| Semantic clause comparison | Not started | Do not label lexical/rule-based matches as semantic AI |
 
-## Security
-| Item | Status |
-|---|---|
-| Ownership isolation (documents, file download, records, edit, audit, search, dashboard, CSV) | Done, 1 integration test (`test_documents_records_audit_are_isolated_between_operators`) |
-| Document AI access checks (index, ask, answers, contradictions, amendments, review) | Done, tested |
+## Access control
 
-## Infrastructure and documentation (this branch)
-| Item | Status | Verification |
+| Item | Status | Notes |
 |---|---|---|
-| Frontend/backend port and CORS alignment | Done | `docker compose config` only; not run |
-| Frontend Dockerfile (`public`, `npm ci`, runtime API URL arg) | Done | Not built (no Docker daemon); `npm ci` and `npm run build` pass locally |
-| Compose works without `backend/.env` | Done | `docker compose config` passes with the file absent |
-| `.dockerignore` files | Done | Not built |
-| ESLint enforced in build | Done | `next lint`: 0 errors, 3 warnings; `npm run build` passes |
-| Runtime vs dev Python requirements | Done | `import app.main` works with runtime file only; 17 tests pass with dev file |
-| README/API docs corrections | Done | Manual review against code |
-| README sections 4, 9, 12, 14 rewrite | Not started | |
-| Security hardening (`e488251`) | Pushed, not merged | 18 tests pass on that branch |
-| Audit handoff (`098aa22`) | Pushed, not merged | |
+| Existing app ownership isolation | Done in code | Prior code includes an operator-isolation integration test |
+| Document AI document/job/answer access checks | Done in code | Re-run tests in the current environment |
+| Revenue Officer claim review authorization | Done in code | Verify audit event and role rejection paths |
 
-## Test results (latest)
-- `pytest -q` in `backend` (Python 3.12, Tesseract eng only): 28 passed, 1 deselected (`test_hindi_and_kannada_samples_extract_native_script`, needs `hin`/`kan` tessdata). 11 of the 28 are new (`tests/test_document_ai.py`).
-- Not run in this session: frontend lint/build, Docker build/up (no Docker daemon, no frontend changes made).
+## Infrastructure and documentation
 
-## Test results (infra branch, earlier)
-- `pytest -q` in `backend`: 17 passed, 1 failed (Kannada OCR, environmental, also fails on `dev`).
-- `next lint`: 0 errors, 3 warnings. `npm run build`: passed.
-- `docker compose config -q`: passed. Docker builds: not run.
+| Item | Status | Notes |
+|---|---|---|
+| Docker Compose and frontend/backend configuration | Present in repository | Prior handoff reported config validation; rebuild/retest before release |
+| Runtime/dev Python requirements split | Present in repository | Recheck dependency installation in clean environment |
+| API contract | Present | Keep synchronized with actual implementation |
+| Session handoff | Corrected | Historical patch instructions removed |
+| Project state | Corrected | Branch/history references must match live repository |
+| README cleanup | Not verified | Do not mark complete without reviewing requested sections |
+| Secret rotation | Outstanding | A previously committed Fast2SMS key was reported; rotate it and remove active use. History cleanup requires separate careful review. |
+
+## Test evidence and limitations
+
+The previous handoff recorded a backend test run of 28 passed and 1 deselected under Python 3.12 with English Tesseract data, but this result has not been re-run in the current implementation session. Treat it as historical evidence only.
+
+Not yet verified in the current session:
+- Backend full test suite and regression suite.
+- Scanned-PDF OCR with a representative scan.
+- Table extraction accuracy.
+- Hindi/Marathi/Kannada OCR and question answering.
+- Frontend lint/build for the current branch.
+- Docker image build and full compose round trip.
+- Ollama model loading, inference latency, and memory use.
+- Dense embedding persistence and hybrid retrieval quality.
+- End-to-end Document AI user workflow.
+
+## Next phases
+
+1. Add disabled-by-default Ollama configuration without changing existing demo/provider behavior.
+2. Verify ingestion and scanned-PDF OCR.
+3. Integrate local Qwen3 4B chat through Ollama with timeout and dependency-failure handling.
+4. Integrate BGE-M3 embeddings and hybrid retrieval.
+5. Implement claim-level grounded generation, citation verification, abstention and review.
+6. Improve contradiction/amendment intelligence with test fixtures.
+7. Build the complete Document AI frontend.
+8. Run full regression/security/E2E tests and document exact outcomes.
+
+Do not call the system "complete" or "production-ready" until the outstanding items above have been tested.
