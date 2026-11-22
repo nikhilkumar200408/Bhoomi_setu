@@ -29,7 +29,7 @@ source venv/bin/activate
 pip install --upgrade pip > /tmp/pip_upgrade.log 2>&1
 
 echo "Installing backend dependencies (this can take a minute)..."
-if ! pip install -r requirements.txt; then
+if ! pip install -r requirements-dev.txt; then
   echo ""
   echo "ERROR: pip install failed. Common causes:"
   echo "  - Python version too new/old for a pinned package (see error above for which one)"
@@ -61,7 +61,7 @@ except Exception as e:
 fi
 
 echo "Seeding demo database..."
-python -m app.seed
+python -m app.seed_real_data
 
 echo "Running backend test suite..."
 python -m pytest -q

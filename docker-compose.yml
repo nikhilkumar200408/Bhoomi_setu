@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   mongo:
     image: mongo:7
@@ -22,8 +20,11 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+    # Optional: extra settings (SMTP, SMS, ...) from backend/.env. A fresh
+    # clone works without it; values below fall back to safe demo defaults.
     env_file:
-      - ./backend/.env
+      - path: ./backend/.env
+        required: false
     environment:
       MONGODB_URL: mongodb://mongo:27017
       MONGODB_DB_NAME: bhoomitrust_db
@@ -36,22 +37,27 @@ services:
       OCR_PROVIDER: ${OCR_PROVIDER:-tesseract}
       EXTRACTION_PROVIDER: ${EXTRACTION_PROVIDER:-regex}
       TRANSLATE_ENABLED: ${TRANSLATE_ENABLED:-true}
-      DEMO_MODE: "true"
-      CORS_ORIGINS: http://localhost:3000
+      # Demo mode tolerates the default JWT secret. Set DEMO_MODE=false (and a
+      # real JWT_SECRET) in the root .env for anything beyond local demos.
+      DEMO_MODE: ${DEMO_MODE:-true}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     ports:
       - "8000:8000"
     volumes:
       - bhoomi_uploads:/app/uploads
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # Inlined into the browser bundle at build time; must be the URL the
+        # *browser* uses to reach the backend, not the in-network service name.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
     restart: unless-stopped
     depends_on:
       - backend
-    environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
     ports:
-      - "3004:3000"
+      - "3000:3000"
 
 volumes:
   bhoomi_mongodata:

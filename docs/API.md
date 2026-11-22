@@ -1,5 +1,9 @@
 # API Reference
 
+This file covers the existing land-record API. The new Document AI API
+(`/api/document-ai/*`) is specified in [`API_CONTRACT.md`](API_CONTRACT.md), which is
+the source of truth for it and is not yet implemented in the backend.
+
 Full interactive documentation (Swagger/OpenAPI) is available at
 `http://localhost:8000/docs` whenever the backend is running.
 
@@ -31,6 +35,7 @@ token: `Authorization: Bearer <token>`.
 | Method | Path                                          | Roles              | Description                                     |
 |--------|------------------------------------------------|--------------------|---------------------------------------------------|
 | GET    | `/api/records`                                 | any                | List land records (optional `?status=` filter)   |
+| GET    | `/api/records/public-verify/{id}`              | none               | Public certificate verification (no login)        |
 | GET    | `/api/records/{id}`                            | any                | Full record detail: fields, validations, document |
 | PATCH  | `/api/records/{id}/fields/{field_name}`        | REVENUE_OFFICER    | Edit an extracted field value                     |
 | POST   | `/api/records/{id}/verify`                     | REVENUE_OFFICER    | `{action, signature}` — signature (base64 PNG) required for APPROVE |
@@ -41,6 +46,9 @@ token: `Authorization: Bearer <token>`.
 | Method | Path                    | Roles | Description                              |
 |--------|--------------------------|-------|--------------------------------------------|
 | GET    | `/api/dashboard/stats`  | any   | Aggregate stats + chart data for the dashboard |
+| GET    | `/api/dashboard/officer-queue` | any | Revenue Officer queue (`?risk=flagged\|all`, default flagged) |
+| GET    | `/api/dashboard/export.csv` | any | CSV export (`?status=`, `?district=`) |
+| GET    | `/api/dashboard/user-activity` | ADMIN | Per-user activity summary          |
 | GET    | `/api/search?q=`        | any   | Search by owner, survey, khasra, khata, village, tehsil, district |
 | GET    | `/api/audit`            | any   | System-wide audit log (optional `?action=` filter) |
 
@@ -49,11 +57,11 @@ token: `Authorization: Bearer <token>`.
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"officer","password":"Officer@123"}' | jq -r .access_token)
+  -d '{"username":"operator","password":"Operator@123"}' | jq -r .access_token)
 
 DOC=$(curl -s -X POST http://localhost:8000/api/documents/upload \
   -H "Authorization: Bearer $TOKEN" \
-  -F "file=@sample_data/english_land_record.png")
+  -F "file=@backend/sample_data/english_land_record.png")
 
 DOC_ID=$(echo $DOC | jq -r .id)
 

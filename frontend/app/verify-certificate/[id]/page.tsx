@@ -48,7 +48,7 @@ export default function PublicVerifyPage() {
             <ShieldX size={40} className="mx-auto text-risk mb-3" />
             <h1 className="font-serif text-lg text-navy mb-1">Not a Verified Record</h1>
             <p className="text-sm text-ink/55">
-              This certificate ID doesn't match a verified BhoomiTrust AI record. It may have been rejected,
+              This certificate ID doesn&apos;t match a verified BhoomiTrust AI record. It may have been rejected,
               is still pending review, or the ID is incorrect.
             </p>
           </>
