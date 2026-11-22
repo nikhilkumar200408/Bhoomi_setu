@@ -1,10 +1,11 @@
+import re
 from typing import List
 
 from fastapi import APIRouter, Depends, Query
 
 from .. import schemas
 from ..database import records_collection
-from ..deps import get_current_user
+from ..deps import get_current_user, accessible_document_ids, record_scope
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -13,16 +14,15 @@ SEARCHABLE_FIELDS = ["owner_name", "survey_number", "khasra_number", "khata_numb
 
 @router.get("", response_model=List[schemas.SearchResultItem])
 async def search(q: str = Query(..., min_length=1), user: dict = Depends(get_current_user)):
-    cursor = records_collection.find(
-        {
-            "fields": {
-                "$elemMatch": {
-                    "field_name": {"$in": SEARCHABLE_FIELDS},
-                    "value": {"$regex": q, "$options": "i"},
-                }
-            }
+    query = record_scope(await accessible_document_ids(user))
+    query["fields"] = {
+        "$elemMatch": {
+            "field_name": {"$in": SEARCHABLE_FIELDS},
+            # re.escape: the search box is plain text, not a user-supplied regex (ReDoS / injection).
+            "value": {"$regex": re.escape(q), "$options": "i"},
         }
-    )
+    }
+    cursor = records_collection.find(query)
 
     results: List[schemas.SearchResultItem] = []
     async for record in cursor:

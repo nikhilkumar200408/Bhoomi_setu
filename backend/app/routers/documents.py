@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from .. import models, schemas
 from ..config import settings
 from ..database import documents_collection, records_collection
-from ..deps import get_current_user, require_roles
+from ..deps import get_current_user, require_roles, get_accessible_document, document_scope
 from ..services.audit.service import log_audit
 from ..services.pipeline import process_document, ProcessingError
 
@@ -116,9 +116,7 @@ async def upload_documents_batch(
 
 @router.post("/{document_id}/process", response_model=schemas.LandRecordOut)
 async def process(document_id: str, user: dict = Depends(require_roles(["DATA_ENTRY_OPERATOR"]))):
-    document = await documents_collection.find_one({"_id": document_id})
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+    document = await get_accessible_document(document_id, user)
     existing_record = await records_collection.find_one({"document_id": document_id})
     if existing_record is not None:
         return _record_out(existing_record)
@@ -133,15 +131,13 @@ async def process(document_id: str, user: dict = Depends(require_roles(["DATA_EN
 
 @router.get("", response_model=List[schemas.DocumentOut])
 async def list_documents(user: dict = Depends(get_current_user)):
-    cursor = documents_collection.find({}).sort("uploaded_at", -1)
+    cursor = documents_collection.find(document_scope(user)).sort("uploaded_at", -1)
     return [_document_out(d) async for d in cursor]
 
 
 @router.get("/{document_id}", response_model=schemas.DocumentDetailOut)
 async def get_document(document_id: str, user: dict = Depends(get_current_user)):
-    document = await documents_collection.find_one({"_id": document_id})
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+    document = await get_accessible_document(document_id, user)
     record = await records_collection.find_one({"document_id": document_id})
     base = _document_out(document)
     return schemas.DocumentDetailOut(**base.model_dump(), land_record_id=record["_id"] if record else None)
@@ -152,9 +148,7 @@ async def get_document_file(document_id: str, user: dict = Depends(get_current_u
     """Serves the original uploaded scan/PDF so the frontend can render the
     real high-resolution document viewer (with pan/zoom + OCR bbox overlay)
     instead of a stand-in illustration."""
-    document = await documents_collection.find_one({"_id": document_id})
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+    document = await get_accessible_document(document_id, user)
     stored_path = document.get("stored_path")
     if not stored_path or not os.path.exists(stored_path):
         raise HTTPException(status_code=404, detail="Original file is not available on this server")

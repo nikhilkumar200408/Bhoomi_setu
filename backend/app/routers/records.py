@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .. import schemas
 from ..database import records_collection, documents_collection, audit_collection
-from ..deps import get_current_user, require_roles
+from ..deps import get_current_user, require_roles, accessible_document_ids, record_scope, get_accessible_record
 from ..services.verification.service import edit_field, apply_verification_action
 
 router = APIRouter(prefix="/api/records", tags=["records"])
@@ -52,16 +52,16 @@ async def list_records(
     status_filter: Optional[str] = Query(None, alias="status"),
     user: dict = Depends(get_current_user),
 ):
-    query = {"status": status_filter} if status_filter else {}
+    query = record_scope(await accessible_document_ids(user))
+    if status_filter:
+        query["status"] = status_filter
     cursor = records_collection.find(query).sort("created_at", -1)
     return [_record_out(r) async for r in cursor]
 
 
 @router.get("/{record_id}", response_model=schemas.LandRecordDetailOut)
 async def get_record(record_id: str, user: dict = Depends(get_current_user)):
-    record = await records_collection.find_one({"_id": record_id})
-    if not record:
-        raise HTTPException(status_code=404, detail="Record not found")
+    record = await get_accessible_record(record_id, user)
     base = _record_out(record)
     return schemas.LandRecordDetailOut(
         **base.model_dump(),
@@ -78,9 +78,7 @@ async def update_field(
     payload: schemas.FieldUpdateRequest,
     user: dict = Depends(require_roles(["DATA_ENTRY_OPERATOR", "REVENUE_OFFICER"])),
 ):
-    record = await records_collection.find_one({"_id": record_id})
-    if not record:
-        raise HTTPException(status_code=404, detail="Record not found")
+    record = await get_accessible_record(record_id, user)
     if not any(f["field_name"] == field_name for f in record["fields"]):
         raise HTTPException(status_code=404, detail="Field not found")
 
@@ -94,9 +92,7 @@ async def verify_record(
     payload: schemas.VerifyRequest,
     user: dict = Depends(require_roles(["REVENUE_OFFICER"])),
 ):
-    record = await records_collection.find_one({"_id": record_id})
-    if not record:
-        raise HTTPException(status_code=404, detail="Record not found")
+    record = await get_accessible_record(record_id, user)
     if payload.action.upper() not in ("APPROVE", "REJECT", "MARK_UNRESOLVED"):
         raise HTTPException(status_code=400, detail="action must be one of APPROVE, REJECT, MARK_UNRESOLVED")
 
@@ -132,9 +128,7 @@ async def public_verify(record_id: str):
 
 @router.get("/{record_id}/audit", response_model=List[schemas.AuditLogOut])
 async def record_audit(record_id: str, user: dict = Depends(get_current_user)):
-    record = await records_collection.find_one({"_id": record_id})
-    if not record:
-        raise HTTPException(status_code=404, detail="Record not found")
+    record = await get_accessible_record(record_id, user)
     # Include both record-level events (EDIT/VERIFY/APPROVE/REJECT) and the
     # earlier document-level pipeline events (UPLOAD/OCR/EXTRACTION/
     # VALIDATION) that occurred before the record existed, so the audit

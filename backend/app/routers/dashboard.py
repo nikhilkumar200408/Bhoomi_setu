@@ -9,15 +9,15 @@ from typing import List, Optional
 
 from .. import schemas, models
 from ..database import documents_collection, records_collection, audit_collection, users_collection
-from ..deps import get_current_user, require_roles
+from ..deps import get_current_user, require_roles, accessible_document_ids, document_scope, record_scope
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 @router.get("/stats", response_model=schemas.DashboardStats)
 async def dashboard_stats(user: dict = Depends(get_current_user)):
-    documents = [d async for d in documents_collection.find({})]
-    records = [r async for r in records_collection.find({})]
+    documents = [d async for d in documents_collection.find(document_scope(user))]
+    records = [r async for r in records_collection.find(record_scope(await accessible_document_ids(user)))]
     fields = [f for r in records for f in r["fields"]]
     validations = [v for r in records for v in r["validations"]]
 
@@ -84,6 +84,7 @@ async def officer_queue(
     risk=all to see every record awaiting/needing verification regardless
     of anomaly score."""
     query: dict = {"status": {"$in": [models.RecordStatus.PENDING_REVIEW.value, models.RecordStatus.UNRESOLVED.value]}}
+    query.update(record_scope(await accessible_document_ids(user)))
     if risk != "all":
         query["anomaly_score"] = {"$gt": 30}
     cursor = records_collection.find(query).sort("anomaly_score", -1)
@@ -133,7 +134,7 @@ async def export_records_csv(
     """Bulk CSV export of records, optionally filtered by status and/or
     district. Streams real data straight from MongoDB — every row is a
     genuine record, flattened field-by-field."""
-    query: dict = {}
+    query: dict = record_scope(await accessible_document_ids(user))
     if status_filter:
         query["status"] = status_filter
     if district:

@@ -18,6 +18,10 @@ documents_collection = db["documents"]
 records_collection = db["records"]
 audit_collection = db["audit"]
 reference_locations_collection = db["reference_locations"]
+# Document AI (see docs/API_CONTRACT.md)
+docai_pages_collection = db["docai_pages"]
+docai_jobs_collection = db["docai_jobs"]
+docai_answers_collection = db["docai_answers"]
 
 
 def get_db() -> AsyncIOMotorDatabase:
@@ -37,6 +41,11 @@ async def create_indexes() -> None:
     await audit_collection.create_index("timestamp")
     await audit_collection.create_index("record_id")
     await audit_collection.create_index("document_id")
+    await documents_collection.create_index("uploaded_by")
+    await docai_pages_collection.create_index([("document_id", 1), ("page", 1)], unique=True)
+    await docai_jobs_collection.create_index("document_id")
+    await docai_answers_collection.create_index("user_id")
+    await docai_answers_collection.create_index("claims.claim_id")
 
 
 async def ping() -> bool:

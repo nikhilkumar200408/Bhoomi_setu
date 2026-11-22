@@ -1,11 +1,13 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .database import create_indexes, ping
-from .routers import auth, documents, records, dashboard, search, audit
+from .routers import auth, documents, records, dashboard, search, audit, document_ai
+from .services.docai.errors import DocAIError
 
 
 @asynccontextmanager
@@ -38,6 +40,14 @@ app.include_router(records.router)
 app.include_router(dashboard.router)
 app.include_router(search.router)
 app.include_router(audit.router)
+app.include_router(document_ai.router)
+
+
+@app.exception_handler(DocAIError)
+async def docai_error_handler(request: Request, exc: DocAIError):
+    return JSONResponse(status_code=exc.status_code, content={"error": {
+        "code": exc.code, "message": exc.message, "details": exc.details,
+        "request_id": request.headers.get("x-request-id")}})
 
 
 @app.get("/api/health")
