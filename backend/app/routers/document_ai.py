@@ -212,10 +212,9 @@ async def ask(payload: AskRequest, user: dict = Depends(get_current_user)):
     # citations, contradictions, abstention, or the backend-computed faithfulness score.
     if not settings.OLLAMA_ENABLED:
         result["llm_assistance"] = {"status": "DISABLED", "draft": None, "model": None}
-    elif result["abstained"]:
-        result["llm_assistance"] = {"status": "SKIPPED_ABSTAINED", "draft": None, "model": settings.OLLAMA_CHAT_MODEL}
-    elif result["conflicts"]:
-        result["llm_assistance"] = {"status": "SKIPPED_CONFLICTS", "draft": None, "model": settings.OLLAMA_CHAT_MODEL}
+    elif not result.get("evidence"):
+        result["llm_assistance"] = {"status": "SKIPPED_NO_EVIDENCE", "draft": None, "model": settings.OLLAMA_CHAT_MODEL,
+                                    "notice": "No source passages were retrieved, so the model was not asked to guess."}
     else:
         try:
             result["llm_assistance"] = await run_in_threadpool(
