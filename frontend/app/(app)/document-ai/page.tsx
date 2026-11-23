@@ -31,7 +31,7 @@ type Conflict = {
   evidence: Evidence[]; explanation?: string;
 };
 type Answer = {
-  answer_id?: string; answer: string; abstained: boolean; faithfulness_score: number | null;
+  answer_id?: string; answer: string; abstained: boolean; faithfulness_score: number | null; question_coverage_score?: number;
   faithfulness_method?: string; claims: Claim[]; evidence: Evidence[]; language_notice?: string | null;
   conflicts: Conflict[]; missing_evidence?: { description: string }[];
   llm_assistance?: { status: string; draft?: string | null; model?: string | null; notice?: string };
@@ -446,11 +446,12 @@ export default function DocumentAIPage() {
         </Card>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
         <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Documents</p><p className="mt-1 text-2xl font-semibold text-navy">{documents.length}</p><p className="text-xs text-ink/45">{documents.filter(isIndexed).length} indexed</p></CardContent></Card>
         <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Claims checked</p><p className="mt-1 text-2xl font-semibold text-navy">{answer?.claims.length ?? 0}</p><p className="text-xs text-ink/45">{answer?.claims.filter(c => c.status === "SUPPORTED").length ?? 0} fully supported</p></CardContent></Card>
         <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Contradictions</p><p className="mt-1 text-2xl font-semibold text-navy">{conflicts.length}</p><p className="text-xs text-ink/45">Across current selection</p></CardContent></Card>
         <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Faithfulness score</p><p className="mt-1 text-2xl font-semibold text-navy">{answer?.faithfulness_score == null ? "—" : `${Math.round(answer.faithfulness_score * 100)}%`}</p><p className="text-xs text-ink/45">Claims grounded in verified source quotes / all claims</p></CardContent></Card>
+        <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Question coverage</p><p className="mt-1 text-2xl font-semibold text-navy">{answer?.question_coverage_score == null ? "—" : `${Math.round(answer.question_coverage_score * 100)}%`}</p><p className="text-xs text-ink/45">Question terms found in returned evidence</p></CardContent></Card>
       </div>
 
       <Card>
@@ -491,6 +492,10 @@ export default function DocumentAIPage() {
         <Card><CardHeader><CardTitle>Answer quality breakdown</CardTitle></CardHeader><CardContent>
           <div className="mb-3 flex items-center justify-between text-sm"><span className="text-ink/60">Faithfulness · verified source grounding</span>
             <strong className="text-navy">{answer?.faithfulness_score == null ? "Not calculated" : `${Math.round(answer.faithfulness_score * 100)}%`}</strong></div>
+          <div className="mb-2 flex items-center justify-between text-xs"><span className="text-ink/60">Question-term coverage · retrieval coverage</span>
+            <strong className="text-navy">{answer?.question_coverage_score == null ? "—" : `${Math.round(answer.question_coverage_score * 100)}%`}</strong></div>
+          <div className="mb-4 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-amber-500 transition-all"
+            style={{width:`${Math.max(0,Math.min(100,(answer?.question_coverage_score ?? 0)*100))}%`}} /></div>
           <div className="h-3 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-verified transition-all"
             style={{width:`${Math.max(0,Math.min(100,(answer?.faithfulness_score ?? 0)*100))}%`}} /></div>
           <div className="mt-5 h-44 w-full"><ResponsiveContainer width="100%" height="100%"><BarChart data={[
@@ -499,7 +504,7 @@ export default function DocumentAIPage() {
             {name:"Review",count:answer?.claims.filter(c=>c.status!=="SUPPORTED" && c.status!=="PARTIALLY_SUPPORTED").length ?? 0},
           ]}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis allowDecimals={false} /><Tooltip />
             <Bar dataKey="count" fill="#0f766e" radius={[6,6,0,0]} /></BarChart></ResponsiveContainer></div>
-          <p className="text-xs text-ink/45">Score = claims matched to verified source quotations divided by all claims. Relevance coverage is shown separately on each claim.</p>
+          <p className="text-xs text-ink/45">Faithfulness measures supported claims with verified quotes. Question-term coverage shows how much of the question appeared in retrieved evidence; 100% faithfulness does not mean every part of a question was answered.</p>
         </CardContent></Card>
       </div>
 
