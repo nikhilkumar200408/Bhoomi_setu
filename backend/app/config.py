@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_CHAT_MODEL: str = "llama3.2"
     OLLAMA_EMBEDDING_MODEL: str = "bge-m3"
+    OLLAMA_EMBEDDINGS_ENABLED: bool = False
     OLLAMA_TIMEOUT_SECONDS: int = 120
     OLLAMA_NUM_CTX: int = 4096
 
