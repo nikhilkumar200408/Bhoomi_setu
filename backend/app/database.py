@@ -21,6 +21,7 @@ docai_pages_collection = db["docai_pages"]
 docai_jobs_collection = db["docai_jobs"]
 docai_answers_collection = db["docai_answers"]
 docai_vectors_collection = db["docai_vectors"]
+chat_sessions_collection = db["chat_sessions"]
 
 
 def get_db() -> AsyncIOMotorDatabase:
@@ -39,6 +40,7 @@ async def create_indexes() -> None:
     await docai_jobs_collection.create_index("document_id")
     await docai_answers_collection.create_index("user_id")
     await docai_answers_collection.create_index("claims.claim_id")
+    await chat_sessions_collection.create_index([("user_id", 1), ("updated_at", -1)])
     await docai_vectors_collection.create_index([("document_id", 1), ("page", 1)])
 
 
