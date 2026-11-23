@@ -13,6 +13,7 @@ from ..deps import accessible_document_ids, document_scope, get_current_user, is
 from ..services.audit.service import log_audit
 from ..services.docai import facts as F
 from ..services.docai import qa
+from ..services.docai.calculations import calculate_financial_value
 from ..services.docai.errors import DocAIError
 from ..services.docai.text import extract_pages
 from ..services.docai.structure import build_document_structure
@@ -176,6 +177,31 @@ async def upload_document_ai_files(files: List[UploadFile] = File(...), user: di
 
 
 # ----------------------------------------------------------------------------- QA
+class CalculationRequest(BaseModel):
+    calculation_type: Literal["simple_interest", "compound_interest", "emi"]
+    principal: float = Field(gt=0, le=1_000_000_000_000)
+    annual_rate_percent: float = Field(ge=0, le=100)
+    duration_value: float = Field(gt=0, le=1200)
+    duration_unit: Literal["months", "years"] = "years"
+    compounding_frequency: int = Field(default=12, ge=1, le=365)
+
+
+@router.post("/calculate")
+async def calculate_document_values(payload: CalculationRequest, user: dict = Depends(get_current_user)):
+    try:
+        result = calculate_financial_value(
+            payload.calculation_type, payload.principal, payload.annual_rate_percent,
+            payload.duration_value, payload.duration_unit, payload.compounding_frequency,
+        )
+    except ValueError as exc:
+        raise DocAIError(400, "INVALID_CALCULATION", str(exc)) from exc
+    await log_audit(
+        action="DOCAI_CALCULATE", user_id=user["_id"],
+        metadata={"calculation_type": payload.calculation_type, "input_source": "USER_PROVIDED"},
+    )
+    return result
+
+
 class AskRequest(BaseModel):
     question: str
     document_ids: List[str] = Field(min_length=1)
