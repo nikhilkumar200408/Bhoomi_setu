@@ -143,6 +143,21 @@ def _metadata(text: str, source_type: str, layout_blocks: List[dict],
 def extract_pages(path: str) -> List[Page]:
     """Extract page text, layout blocks, tables and traceable quality metadata."""
     ext = os.path.splitext(path)[1].lower()
+    if ext == ".txt":
+        try:
+            with open(path, "r", encoding="utf-8") as source:
+                text = normalize(source.read())
+        except (OSError, UnicodeError) as exc:
+            raise DocAIError(422, "UNPROCESSABLE_DOCUMENT", "The text source could not be read.") from exc
+        if not text:
+            raise DocAIError(422, "UNPROCESSABLE_DOCUMENT", "The text source is empty.")
+        return [{
+            "page": 1, "text": text, "source_type": "WEB_TEXT",
+            "layout_blocks": [{"text": text, "bbox": [], "block_type": "WEB_TEXT"}],
+            "tables": [],
+            "extraction_metadata": _metadata(text, "WEB_TEXT", [{"text": text}], [], "NOT_APPLICABLE"),
+        }]
+
     if ext == ".pdf":
         import fitz
 
