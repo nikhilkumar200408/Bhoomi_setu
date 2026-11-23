@@ -28,7 +28,7 @@ Status key: Done, Partial, Not started, Not verified. Updated 2026-11-23 after t
 | Contradiction detection | Partial | Rule-based numeric facts (percent, INR, area, duration) |
 | Amendment tracking | Partial | Basic explicit-cue/base-reference/effective-date rules |
 | Human review | Done in code | Revenue Officer only; source evidence remains unchanged |
-| Document AI frontend | Not started | Must use the documented API contract |
+| Document AI frontend | Partial | Upload/indexing, source selection, Q&A, evidence, contradictions, amendments, calculator and workspace Reset are implemented; PDF passage highlighting and in-app claim review remain outstanding |
 | Local Ollama LLM | Partial | Optional local Llama 3.2 draft integration added; output is marked unverified and cannot replace evidence-backed answers |
 | BGE-M3 embeddings / vector retrieval | Partial | Opt-in Ollama embeddings, MongoDB chunk-vector storage, batch indexing, query embeddings, cosine ranking and RRF fusion implemented. Semantic-only matches are downgraded to PARTIALLY_SUPPORTED and require human review. Real-model evaluation and threshold tuning remain |
 
@@ -44,9 +44,9 @@ Status key: Done, Partial, Not started, Not verified. Updated 2026-11-23 after t
 
 | Item | Status | Notes |
 |---|---|---|
-| Docker Compose and frontend/backend configuration | Present in repository | Rebuild/retest before release |
+| Docker Compose and frontend/backend configuration | Present in repository | Phase 9 CI validates Compose and builds both images; local runtime round trip remains required |
 | Runtime/dev Python requirements split | Present in repository | Development dependencies live in requirements-dev.txt |
-| API contract | Present | Keep synchronized with actual implementation |
+| API contract | Present | Keep synchronized with actual implementation |\n| CI regression workflow | Added | `.github/workflows/ci.yml` runs backend pytest, frontend lint/build, and Docker image builds on dev/main pushes and pull requests |\n| Phase 9 release checklist | Added | `docs/PHASE_9_RELEASE_CHECKLIST.md`; manual end-to-end, security and deployment checks still need execution |
 | Session handoff | Corrected | Historical patch instructions removed |
 | Project state | Corrected | Domain-independent scope documented |
 | README cleanup | Not verified | Do not mark complete without reviewing requested sections |
@@ -78,3 +78,18 @@ Still not verified:
 7. **Regression, security and end-to-end validation:** preserve existing platform workflows and test banking, insurance, contracts, policies, scanned PDFs, tables, and multilingual cases.
 
 Do not call the system "complete" or "production-ready" until outstanding items have been tested.
+
+
+## Phase 9 execution status (2026-11-23)
+
+- **Implemented in repository:** GitHub Actions CI for backend regression tests,
+  frontend lint/production build, Docker Compose validation and backend/frontend
+  image builds.
+- **Implemented in UI:** Document AI Reset clears selected source documents
+  and active Q&A/evidence state without deleting uploaded files or indexed data.
+- **Documented:** manual end-to-end, security and deployment gates in
+  `docs/PHASE_9_RELEASE_CHECKLIST.md`.
+- **Not yet verified:** first remote CI run after these commits, fresh full local
+  test/build run, manual reset interaction, representative real-document
+  validation, and a secured non-demo deployment. Do not mark Phase 9 complete
+  until those checks pass and evidence is recorded.
