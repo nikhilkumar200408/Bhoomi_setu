@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     OLLAMA_EMBEDDINGS_ENABLED: bool = False
     OLLAMA_TIMEOUT_SECONDS: int = 120
     OLLAMA_NUM_CTX: int = 4096
+    # Comma-separated exact HTTPS hostnames permitted for public webpage ingestion.
+    WEB_IMPORT_ALLOWED_DOMAINS: str = ""
 
     OCR_PROVIDER: str = "tesseract"       # demo | tesseract | paddleocr
     EXTRACTION_PROVIDER: str = "regex"    # demo | regex | llm
