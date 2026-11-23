@@ -42,7 +42,7 @@ type CalculationResult = { formula: string; working: string; notice: string; cal
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function highlightImportantText(value: string) {
-  const pattern = /(interest rate|processing fee|overdue charges?|repayment|maturity|effective date|penalty|eligibility|sanction|₹\s?[\d,]+|\b\d+(?:\.\d+)?\s?%|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b)/gi;
+  const pattern = /(interest rate|processing fee|overdue charges?|repayment|maturity|effective date|penalty|eligibility|sanction|ब्याज दर|प्रसंस्करण शुल्क|विलंब शुल्क|पुनर्भुगतान|परिपक्वता|प्रभावी तिथि|दंड|पात्रता|₹\s?[\d,]+|\b\d+(?:\.\d+)?\s?%|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b)/gi;
   const matcher = new RegExp(pattern.source, "i");
   return value.split(pattern).map((part, index) =>
     matcher.test(part)
@@ -582,7 +582,7 @@ export default function DocumentAIPage() {
                 {answer.llm_assistance.draft && (
                   <div className="rounded-card border border-review/30 bg-review-bg/40 p-3">
                     <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-review">LLM summary draft — verify against the cited source passages</p>
-                    <p className="text-sm text-navy">{answer.llm_assistance.draft.split(/[.!?।]\s/)[0].trim()}{answer.llm_assistance.draft.length > 180 ? "…" : ""}</p>
+                    <p className="line-clamp-2 text-sm text-navy">{answer.llm_assistance.draft.split(/[.!?।]\s/)[0].trim().slice(0, 180)}{answer.llm_assistance.draft.split(/[.!?।]\s/)[0].trim().length > 180 ? "…" : ""}</p>
                     <p className="mt-2 text-xs text-ink/55">{answer.llm_assistance.notice}</p>
                   </div>
                 )}
