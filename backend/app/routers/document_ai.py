@@ -1,5 +1,5 @@
 """Document AI routes (additive module; see docs/API_CONTRACT.md). Every route is ownership-scoped."""
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, UploadFile, File
 from fastapi.concurrency import run_in_threadpool
@@ -179,7 +179,7 @@ async def upload_document_ai_files(files: List[UploadFile] = File(...), user: di
 class AskRequest(BaseModel):
     question: str
     document_ids: List[str] = Field(min_length=1)
-    language: str = "en"
+    language: Literal["en", "hi"] = "en"
     include_superseded_documents: bool = True
     max_evidence_per_claim: int = 5
 
@@ -208,6 +208,8 @@ async def ask(payload: AskRequest, user: dict = Depends(get_current_user)):
                                 max(1, min(payload.max_evidence_per_claim, 10)),
                                 vector_scores=vector_scores)
 
+    result["response_language"] = payload.language
+
     # Ollama is optional drafting assistance only. It never changes source-backed claims,
     # citations, contradictions, abstention, or the backend-computed faithfulness score.
     if not settings.OLLAMA_ENABLED:
@@ -218,7 +220,7 @@ async def ask(payload: AskRequest, user: dict = Depends(get_current_user)):
     else:
         try:
             result["llm_assistance"] = await run_in_threadpool(
-                generate_evidence_draft, payload.question.strip(), result["claims"], result["evidence"])
+                generate_evidence_draft, payload.question.strip(), result["claims"], result["evidence"], payload.language)
         except OllamaError:
             # Local model downtime must never break evidence-backed Q&A.
             result["llm_assistance"] = {
