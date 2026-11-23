@@ -383,6 +383,8 @@ async def correct_claim(claim_id: str, payload: CorrectClaimRequest, user: dict 
     """Store a reviewer correction separately; never mutate the source quote or original claim."""
     if user["role"] != "REVENUE_OFFICER":
         raise DocAIError(403, "FORBIDDEN", "Only a Revenue Officer may correct claims.")
+    if len(payload.corrected_text.strip()) < 3 or len(payload.reason.strip()) < 5:
+        raise DocAIError(400, "INVALID_REQUEST", "A correction and a meaningful reason are required.")
     a = await docai_answers_collection.find_one({"claims.claim_id": claim_id})
     if not a:
         raise _not_found("claim", claim_id=claim_id)
