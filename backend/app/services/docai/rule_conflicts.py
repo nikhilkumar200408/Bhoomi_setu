@@ -51,6 +51,7 @@ def detect_rule_conflicts(pages: List[dict], detected_at: str) -> List[dict]:
             grouped.setdefault((fact["label"], fact["unit"]), []).append(fact)
 
     conflicts = []
+    page_lookup = {(p["document_id"], p["page"]): p["text"] for p in pages}
     for (label, unit), facts in grouped.items():
         seen = set()
         for index, a in enumerate(facts):
@@ -76,8 +77,8 @@ def detect_rule_conflicts(pages: List[dict], detected_at: str) -> List[dict]:
                         "page_number": fact["page"], "section": None, "quote": quote,
                         "start_char": fact["start"], "end_char": fact["end"],
                         "relation": "CONTRADICTS", "source_type": fact["source_type"],
-                        "verification": {"quote_found_in_source": quote in quote,
-                                         "page_verified": quote in quote},
+                        "verification": {"quote_found_in_source": page_lookup.get((fact["document_id"], fact["page"]), "")[fact["start"]:fact["end"]] == quote,
+                                         "page_verified": page_lookup.get((fact["document_id"], fact["page"]), "")[fact["start"]:fact["end"]] == quote},
                     })
                 uncertain_scope = bool(a["scope"]) != bool(b["scope"])
                 conflicts.append({
