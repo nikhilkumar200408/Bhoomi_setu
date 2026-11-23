@@ -4,9 +4,10 @@ import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useS
 import { AlertCircle, Bot, Check, ChevronDown, FileText, Loader2, MessageCircle, Plus, Send, ShieldCheck, Sparkles, Trash2, User, X, ExternalLink, BookOpen, Quote } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
+import PdfEvidenceViewer from "@/components/PdfEvidenceViewer";
 import { LoadingState } from "@/components/ui/States";
 
-type Doc = { id: string; filename: string; docai_status?: string; status?: string };
+type Doc = { id: string; filename: string; file_type?: string; docai_status?: string; status?: string };
 type Evidence = { evidence_id: string; filename: string; page_number: number; quote: string; source_url?: string; verification?: { quote_found_in_source?: boolean } };
 type Claim = { claim_id: string; text: string; status: string; confidence: number; explanation?: string };
 type Conflict = { topic: string; status: string; explanation?: string; evidence: Evidence[] };
@@ -348,6 +349,15 @@ export default function ChatPage() {
               <div className="rounded-xl border border-line p-3">
                 <div className="flex items-center gap-2 text-xs font-semibold text-navy"><Quote size={13} className="text-accent"/> Source excerpt</div>
                 <p className="mt-3 whitespace-pre-wrap text-xs leading-6 text-ink/75">“{activeEvidence.quote}”</p>
+                {(() => {
+                  const sourceDoc = documents.find((doc) => doc.filename === activeEvidence.filename);
+                  const isPdf = sourceDoc?.file_type === "application/pdf" || activeEvidence.filename.toLowerCase().endsWith(".pdf");
+                  return sourceDoc && isPdf ? (
+                    <div className="mt-3">
+                      <PdfEvidenceViewer documentId={sourceDoc.id} pageNumber={activeEvidence.page_number} quote={activeEvidence.quote}/>
+                    </div>
+                  ) : null;
+                })()}
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3"><span className="text-[10px] text-ink/45">{activeEvidence.filename} · Page {activeEvidence.page_number}</span><span className={activeEvidence.verification?.quote_found_in_source ? "text-[10px] font-medium text-emerald-700" : "text-[10px] font-medium text-amber-700"}>{activeEvidence.verification?.quote_found_in_source ? "Quote verified" : "Verification unavailable"}</span></div>
                 {activeEvidence.source_url && <a href={activeEvidence.source_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-accent hover:underline">Open source <ExternalLink size={11}/></a>}
               </div>
