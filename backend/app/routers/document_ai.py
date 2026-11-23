@@ -1,4 +1,7 @@
 """Document AI routes (additive module; see docs/API_CONTRACT.md). Every route is ownership-scoped."""
+import os
+import re
+import uuid
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, UploadFile, File
