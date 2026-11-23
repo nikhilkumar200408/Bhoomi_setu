@@ -142,8 +142,15 @@ def answer_question(question: str, pages: List[dict], doc_ids: List[str], includ
         if conflicts:
             answer += " Note: the selected documents contain conflicting values on this topic; see conflicts."
         missing = []
+    matched_question_terms = set()
+    for claim in claims:
+        matched_question_terms.update(set(q_terms) & set(tokens(claim["text"])))
+    question_coverage = round(len(matched_question_terms) / len(q_terms), 4) if q_terms else 0.0
+
     return {"answer_id": "ans_" + gen_uuid()[:12], "question": question, "answer": answer, "abstained": abstained,
             "faithfulness_score": faithfulness(claims, list(evidences.values())),
+            "question_coverage_score": question_coverage,
+            "question_terms_matched": sorted(matched_question_terms),
             "faithfulness_method": FAITHFULNESS_METHOD,
             "retrieval_mode": "HYBRID_BM25_VECTOR" if vector_scores else "BM25", "claims": claims,
             "evidence": list(evidences.values()), "missing_evidence": missing, "conflicts": conflicts,
