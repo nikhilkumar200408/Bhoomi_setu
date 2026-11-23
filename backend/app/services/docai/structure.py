@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 _SPACE = re.compile(r"\s+")
 _HEADING = re.compile(
     r"^(?:(?:section|clause|article|schedule|annexure|appendix)\s+"
-    r"[A-Z0-9][A-Z0-9.()/-]*|[0-9]+(?:\.[0-9]+)*[.)]?\s+.{2,})$",
+    r"[A-Z0-9][A-Z0-9.()/-]*(?:\s*[:.-]\s*|\s+).+|[0-9]+(?:\.[0-9]+)*[.)]?\s+.{2,})$",
     re.IGNORECASE,
 )
 _CONTINUATION_END = re.compile(r"(?:[-,:;]\s*|\b(?:and|or|of|the|to|with|including)\s*)$", re.I)
