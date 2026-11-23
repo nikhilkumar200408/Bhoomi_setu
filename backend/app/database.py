@@ -22,6 +22,7 @@ reference_locations_collection = db["reference_locations"]
 docai_pages_collection = db["docai_pages"]
 docai_jobs_collection = db["docai_jobs"]
 docai_answers_collection = db["docai_answers"]
+docai_vectors_collection = db["docai_vectors"]
 
 
 def get_db() -> AsyncIOMotorDatabase:
@@ -46,6 +47,7 @@ async def create_indexes() -> None:
     await docai_jobs_collection.create_index("document_id")
     await docai_answers_collection.create_index("user_id")
     await docai_answers_collection.create_index("claims.claim_id")
+    await docai_vectors_collection.create_index([("document_id", 1), ("page", 1)])
 
 
 async def ping() -> bool:
