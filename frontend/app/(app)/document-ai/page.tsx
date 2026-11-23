@@ -40,9 +40,9 @@ type CalculationResult = { formula: string; working: string; notice: string; cal
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function highlightImportantText(value: string) {
-  const parts = value.split(/(interest rate|processing fee|overdue charges?|repayment|maturity|effective date|penalty|eligibility|sanction|₹\\s?[\\d,]+|\\b\\d+(?:\\.\\d+)?\\s?%|\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}\\b)/gi);
+  const parts = value.split(/(interest rate|processing fee|overdue charges?|repayment|maturity|effective date|penalty|eligibility|sanction|₹\s?[\d,]+|\\b\d+(?:\.\d+)?\s?%|\\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\\b)/gi);
   return parts.map((part, index) =>
-    /^(interest rate|processing fee|overdue charges?|repayment|maturity|effective date|penalty|eligibility|sanction|₹\\s?[\\d,]+|\\b\\d+(?:\\.\\d+)?\\s?%|\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}\\b)$/i.test(part)
+    /^(interest rate|processing fee|overdue charges?|repayment|maturity|effective date|penalty|eligibility|sanction|₹\s?[\d,]+|\\b\d+(?:\.\d+)?\s?%|\\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\\b)$/i.test(part)
       ? <mark key={index} className="rounded bg-amber-100 px-1 text-amber-950">{part}</mark>
       : <span key={index}>{part}</span>
   );
@@ -495,7 +495,7 @@ export default function DocumentAIPage() {
                 {answer.llm_assistance.draft && (
                   <div className="rounded-card border border-review/30 bg-review-bg/40 p-3">
                     <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-review">LLM summary draft — verify against the cited source passages</p>
-                    <p className="text-sm text-navy">{answer.llm_assistance.draft.split(/[.!?।]\\s/)[0].trim()}{answer.llm_assistance.draft.length > 180 ? "…" : ""}</p>
+                    <p className="text-sm text-navy">{answer.llm_assistance.draft.split(/[.!?।]\s/)[0].trim()}{answer.llm_assistance.draft.length > 180 ? "…" : ""}</p>
                     <p className="mt-2 text-xs text-ink/55">{answer.llm_assistance.notice}</p>
                   </div>
                 )}
