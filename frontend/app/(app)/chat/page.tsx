@@ -120,8 +120,13 @@ export default function ChatPage() {
       );
       setActiveId(result.session_id);
       setMessages(current => [...current.filter(m => m.id !== optimistic.id), result.user_message, result.assistant_message]);
-      const history = await api.get<{ items: Session[] }>("/api/chat/sessions");
-      setSessions(history.items || []);
+      try {
+        const history = await api.get<{ items: Session[] }>("/api/chat/sessions");
+        setSessions(history.items || []);
+      } catch {
+        // The answer is already saved; a sidebar refresh failure must not turn
+        // a successful send into a retryable/duplicate-looking failure.
+      }
     } catch (e) {
       setMessages(current => current.filter(m => m.id !== optimistic.id));
       setQuestion(text);
@@ -185,7 +190,13 @@ export default function ChatPage() {
             <select value={language} onChange={e => setLanguage(e.target.value as "en" | "hi")} className="rounded-lg border border-line bg-white px-2 py-2 text-xs text-navy" aria-label="Response language">
               <option value="en">English</option><option value="hi">हिन्दी</option>
             </select>
-            <Button size="sm" variant="secondary" onClick={newChat} className="md:hidden"><Plus size={14}/> New chat</Button>
+            <div className="flex items-center gap-2">
+              <select aria-label="Open recent conversation" value={activeId || ""} onChange={e => e.target.value ? void openSession(e.target.value) : newChat()} className="max-w-36 rounded-lg border border-line bg-white px-2 py-2 text-xs text-navy md:hidden">
+                <option value="">Recent chats</option>
+                {sessions.map(session => <option key={session.id} value={session.id}>{session.title}</option>)}
+              </select>
+              <Button size="sm" variant="secondary" onClick={newChat} className="md:hidden"><Plus size={14}/> New chat</Button>
+            </div>
           </div>
         </header>
 
