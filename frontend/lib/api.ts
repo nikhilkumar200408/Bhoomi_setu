@@ -38,7 +38,7 @@ async function request<T>(
     let detail = res.statusText;
     try {
       const body = await res.json();
-      detail = body.detail || JSON.stringify(body);
+      detail = body.detail || body.error?.message || body.message || JSON.stringify(body);
     } catch {
       /* ignore */
     }
