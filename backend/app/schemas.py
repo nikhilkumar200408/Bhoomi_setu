@@ -37,6 +37,7 @@ class DocumentOut(BaseModel):
     uploaded_at: datetime
     processed_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    docai_status: Optional[str] = None
 
 
 class DocumentDetailOut(DocumentOut):
