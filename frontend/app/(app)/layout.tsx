@@ -21,10 +21,10 @@ import { useLanguage, Lang, LANG_LABELS } from "@/lib/language";
 import { LoadingState } from "@/components/ui/States";
 
 const NAV_ITEMS = [
+  { href: "/document-ai", key: "document_ai", icon: BrainCircuit },
   { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },
   { href: "/documents", key: "documents", icon: FileStack },
   { href: "/documents/upload", key: "upload", icon: UploadCloud },
-  { href: "/document-ai", key: "document_ai", icon: BrainCircuit },
   { href: "/records", key: "records", icon: ClipboardCheck },
   { href: "/audit", key: "audit_trail", icon: History },
 ];
