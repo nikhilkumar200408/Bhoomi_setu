@@ -31,8 +31,8 @@ def normalize(text: str) -> str:
 def _ocr_image_details(path: str, page_number: int = 1, coordinate_scale: float = 1.0) -> dict:
     """Return OCR text and word/line provenance from the configured Tesseract provider."""
     try:
-        from ..ocr.tesseract_provider import TesseractOCRProvider
-        spans = TesseractOCRProvider().extract(path)
+        from ..ocr import get_ocr_provider
+        spans = get_ocr_provider().extract(path)
     except Exception as e:  # noqa: BLE001 - dependency and OCR failures are normalized
         raise DocAIError(503, "DEPENDENCY_UNAVAILABLE", "OCR is not available on this server.") from e
 
@@ -46,6 +46,10 @@ def _ocr_image_details(path: str, page_number: int = 1, coordinate_scale: float 
             "bbox": bbox,
             "confidence": float(span.get("confidence", 0.0)),
             "block_type": "OCR_LINE",
+            "recognition_engine": span.get("recognition_engine", "tesseract"),
+            "review_required": bool(
+                span.get("review_required", float(span.get("confidence", 0.0)) < 0.60)
+            ),
         })
     text = normalize(" ".join(block["text"] for block in blocks))
     confidences = [b["confidence"] for b in blocks if b["confidence"] >= 0]
@@ -174,13 +178,22 @@ def extract_pages(path: str) -> List[Page]:
                     with tempfile.TemporaryDirectory() as tmp:
                         image_path = os.path.join(tmp, "page.png")
                         pdf_page.get_pixmap(dpi=OCR_DPI).save(image_path)
-                        ocr = _ocr_image_details(image_path, page_number, OCR_DPI / 72.0)
+                        coordinate_scale = OCR_DPI / 72.0
+                        ocr = _ocr_image_details(
+                            image_path, page_number, coordinate_scale
+                        )
+
+                        from .ocr_tables import extract_scanned_tables
+
+                        tables, table_status, table_warnings = extract_scanned_tables(
+                            image_path, page_number, coordinate_scale
+                        )
+
                     text = ocr["text"]
                     layout_blocks = ocr["layout_blocks"]
                     ocr_confidence_avg = ocr["ocr_confidence_avg"]
                     source = "OCR_TEXT"
-                    tables: List[dict] = []
-                    table_status = "OCR_TABLE_STRUCTURE_NOT_RECONSTRUCTED"
+                    warnings.extend(table_warnings)
                     if text:
                         warnings.append("OCR_TEXT_REQUIRES_SOURCE_REVIEW")
                 else:

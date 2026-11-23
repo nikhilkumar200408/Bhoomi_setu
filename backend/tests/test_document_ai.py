@@ -15,7 +15,7 @@ from app.services.docai.calculations import calculate_financial_value
 
 SAMPLE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
 USERS = [("op_a", "Operator@123", "DATA_ENTRY_OPERATOR"), ("op_b", "Operator@123", "DATA_ENTRY_OPERATOR"),
-         ("officer", "Officer@123", "REVENUE_OFFICER"), ("admin", "Admin@123", "ADMIN")]
+         ("officer", "Officer@123", "REVENUE_OFFICER"), ("admin", "Admin@123", "ADMIN"), ("web_import_disabled", "WebImport@123", "DATA_ENTRY_OPERATOR")]
 
 BASE = ("Loan Agreement. Under Clause 4, interest shall be eight percent per annum on the principal. "
         "The borrower shall repay within five years.")
@@ -71,30 +71,20 @@ async def ask(client, h, question, ids, **kw):
 
 # ------------------------------------------------------------------ ownership (security)
 @pytest.mark.asyncio
-async def test_documents_records_audit_are_isolated_between_operators(client):
+async def test_documents_are_isolated_between_operators(client):
     a, b, officer = await hdr(client, "op_a"), await hdr(client, "op_b"), await hdr(client, "officer")
-    with open(os.path.join(SAMPLE_DIR, "english_land_record.png"), "rb") as f:
-        r = await client.post("/api/documents/upload", files={"file": ("x.png", f, "image/png")}, headers=a)
-    doc_id = r.json()["id"]
-    rec = await client.post(f"/api/documents/{doc_id}/process", headers=a)
-    assert rec.status_code == 200, rec.text
-    rec_id = rec.json()["id"]
+    doc_id = await upload_pdf(client, a, "private-agreement.pdf", BASE)
 
+    assert len((await client.get("/api/documents", headers=a)).json()) == 1
     assert (await client.get("/api/documents", headers=b)).json() == []
-    for path in (f"/api/documents/{doc_id}", f"/api/documents/{doc_id}/file", f"/api/records/{rec_id}",
-                 f"/api/records/{rec_id}/audit"):
-        assert (await client.get(path, headers=b)).status_code == 404, path
-    assert (await client.post(f"/api/documents/{doc_id}/process", headers=b)).status_code == 404
-    assert (await client.patch(f"/api/records/{rec_id}/fields/owner_name", json={"new_value": "Hacked", "reason": "x"}, headers=b)).status_code == 404
-    assert (await client.get("/api/records", headers=b)).json() == []
-    assert (await client.get("/api/audit", headers=b)).json() == []
-    assert (await client.get("/api/search", params={"q": "a"}, headers=b)).json() == []
-    assert (await client.get("/api/dashboard/stats", headers=b)).json()["records_extracted"] == 0
-    # owner and reviewer roles keep access
-    assert (await client.get(f"/api/records/{rec_id}", headers=a)).status_code == 200
-    assert (await client.get(f"/api/records/{rec_id}", headers=officer)).status_code == 200
-    assert len((await client.get("/api/documents", headers=officer)).json()) == 1
+    assert (await client.get(f"/api/documents/{doc_id}", headers=b)).status_code == 404
+    assert (await client.get(f"/api/documents/{doc_id}/file", headers=b)).status_code == 404
+    assert (await client.post(f"/api/document-ai/documents/{doc_id}/index", headers=b)).status_code == 404
 
+    # Privileged reviewer can access operator documents.
+    assert (await client.get(f"/api/documents/{doc_id}", headers=officer)).status_code == 200
+    assert len((await client.get("/api/documents", headers=officer)).json()) == 1
+    assert (await client.get("/api/audit", headers=b)).json() == []
 
 @pytest.mark.asyncio
 async def test_document_ai_rejects_foreign_documents_and_roles(client):

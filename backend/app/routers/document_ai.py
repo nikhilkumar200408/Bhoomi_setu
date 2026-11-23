@@ -53,8 +53,13 @@ async def _indexed_pages(docs: List[dict]) -> List[dict]:
                          {"document_ids": not_indexed})
     cursor = docai_pages_collection.find({"document_id": {"$in": [d["_id"] for d in docs]}}).sort(
         [("document_id", 1), ("page", 1)])
-    return [{**{k: p[k] for k in ("document_id", "filename", "page", "text", "source_type")},
-             "source_url": p.get("source_url")} async for p in cursor]
+    return [{
+        **{k: p[k] for k in ("document_id", "filename", "page", "text", "source_type")},
+        "source_url": p.get("source_url"),
+        "layout_blocks": p.get("layout_blocks", []),
+        "tables": p.get("tables", []),
+        "extraction_metadata": p.get("extraction_metadata", {}),
+    } async for p in cursor]
 
 
 # ----------------------------------------------------------------------------- indexing

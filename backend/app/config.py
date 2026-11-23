@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # Comma-separated exact HTTPS hostnames permitted for public webpage ingestion.
     WEB_IMPORT_ALLOWED_DOMAINS: str = ""
 
-    OCR_PROVIDER: str = "tesseract"       # demo | tesseract | paddleocr
+    OCR_PROVIDER: str = "tesseract"       # demo | tesseract | paddleocr | trocr_handwritten | hybrid
     EXTRACTION_PROVIDER: str = "regex"    # demo | regex | llm
     TRANSLATE_ENABLED: bool = True        # deep-translator; requires outbound internet
 

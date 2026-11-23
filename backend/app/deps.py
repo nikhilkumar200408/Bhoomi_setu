@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
 from .auth import decode_access_token
-from .database import users_collection, documents_collection, records_collection
+from .database import users_collection, documents_collection
 from . import models
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
@@ -68,21 +68,9 @@ async def accessible_document_ids(user: dict) -> Optional[List[str]]:
     return [d["_id"] async for d in documents_collection.find({"uploaded_by": user["_id"]}, {"_id": 1})]
 
 
-def record_scope(doc_ids: Optional[List[str]]) -> dict:
-    return {} if doc_ids is None else {"document_id": {"$in": doc_ids}}
-
 
 async def get_accessible_document(document_id: str, user: dict) -> dict:
     document = await documents_collection.find_one({"_id": document_id, **document_scope(user)})
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     return document
-
-
-async def get_accessible_record(record_id: str, user: dict) -> dict:
-    record = await records_collection.find_one({"_id": record_id})
-    if not record:
-        raise HTTPException(status_code=404, detail="Record not found")
-    if not is_privileged(user):
-        await get_accessible_document(record["document_id"], user)  # 404 if not theirs
-    return record

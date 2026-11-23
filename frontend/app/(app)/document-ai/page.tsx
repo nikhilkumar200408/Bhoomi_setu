@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   AlertTriangle, BrainCircuit, Calculator, CheckCircle2, FileSearch, GitBranch,
-  Loader2, RefreshCw, RotateCcw, Send, ShieldCheck, Sparkles, UploadCloud,
+  Loader2, RefreshCw, RotateCcw, Send, ShieldCheck, Sparkles, UploadCloud, Mic, MicOff,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -15,7 +15,28 @@ type Doc = {
   id: string; filename: string; status: string; docai_status?: string; source_url?: string;
   file_size_bytes?: number; uploaded_at?: string;
 };
-type Job = { status: string; pages_total?: number; pages_processed?: number; error?: { message?: string } };
+type DocumentStructure = {
+  sections: {
+    section_id: string; heading: string | null; text: string;
+    page_numbers: number[]; source_spans: { page: number; quote: string }[];
+    reconstruction: string;
+  }[];
+  tables: {
+    table_id: string; header: string[]; rows: string[][];
+    page_numbers: number[]; continuation_status: string;
+  }[];
+  page_quality?: {
+    page: number; source_type: string;
+    metadata: Record<string, any>;
+    review_blocks: { text: string; confidence: number; bbox: number[]; reason: string }[];
+  }[];
+  section_count: number; table_count: number; source_page_count: number;
+  warnings: string[];
+};
+type Job = {
+  status: string; pages_total?: number; pages_processed?: number;
+  error?: { message?: string }; structure?: DocumentStructure;
+};
 type Evidence = {
   evidence_id: string; filename: string; page_number: number; quote: string; source_url?: string;
   relation?: string; verification?: { quote_found_in_source?: boolean };
@@ -46,7 +67,7 @@ function highlightImportantText(value: string) {
   const matcher = new RegExp(pattern.source, "i");
   return value.split(pattern).map((part, index) =>
     matcher.test(part)
-      ? <mark key={index} className="rounded bg-amber-100 px-1 text-amber-950">{part}</mark>
+      ? <mark key={index} className="rounded bg-cyan-200 px-1 font-bold text-slate-950 ring-1 ring-cyan-700">{part}</mark>
       : <span key={index}>{part}</span>
   );
 }
@@ -55,6 +76,7 @@ export default function DocumentAIPage() {
   const [documents, setDocuments] = useState<Doc[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [indexedIds, setIndexedIds] = useState<string[]>([]);
+  const [structures, setStructures] = useState<Record<string, DocumentStructure>>({});
   const [loading, setLoading] = useState(true);
   const [indexing, setIndexing] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -64,6 +86,9 @@ export default function DocumentAIPage() {
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [indexMessage, setIndexMessage] = useState("");
   const [question, setQuestion] = useState("");
+  const [listening, setListening] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
+  const recognitionRef = useRef<any>(null);
   const [language, setLanguage] = useState<"en" | "hi">("en");
   const [calculationType, setCalculationType] = useState<"simple_interest" | "compound_interest" | "emi">("simple_interest");
   const [principal, setPrincipal] = useState("100000");
@@ -217,6 +242,9 @@ export default function DocumentAIPage() {
         for (let attempt = 0; attempt < 90; attempt++) {
           await sleep(2000);
           const job = await api.get<Job>(`/api/document-ai/indexing-jobs/${started.indexing_job_id}`);
+          if (job.structure) {
+            setStructures((current) => ({ ...current, [id]: job.structure! }));
+          }
           if (job.status === "COMPLETED") { completed = true; break; }
           if (job.status === "FAILED") throw new Error(job.error?.message || "Document indexing failed.");
         }
@@ -284,6 +312,62 @@ export default function DocumentAIPage() {
     }
   }
 
+  function toggleVoiceInput() {
+    setVoiceError("");
+
+    if (listening) {
+      recognitionRef.current?.stop();
+      setListening(false);
+      return;
+    }
+
+    const SpeechRecognition =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setVoiceError("Voice input is not supported in this browser. Try Chrome or Edge.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = language === "hi" ? "hi-IN" : "en-IN";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onresult = (event: any) => {
+      let transcript = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      if (transcript.trim()) {
+        setQuestion((previous) =>
+          `${previous}${previous.trim() ? " " : ""}${transcript}`.slice(0, 2000)
+        );
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      setVoiceError(
+        event.error === "not-allowed"
+          ? "Microphone permission denied. Allow microphone access in browser settings."
+          : `Voice input error: ${event.error}`
+      );
+      setListening(false);
+    };
+
+    recognition.onend = () => setListening(false);
+    recognitionRef.current = recognition;
+
+    try {
+      recognition.start();
+      setListening(true);
+    } catch {
+      setVoiceError("Could not start microphone. Please try again.");
+      setListening(false);
+    }
+  }
+
   async function askQuestion(event: React.FormEvent) {
     event.preventDefault();
     if (!question.trim() || !selected.length) return;
@@ -314,6 +398,57 @@ export default function DocumentAIPage() {
 
   return (
     <div className="space-y-6">
+      {/* System Novelty */}
+      <section className="rounded-2xl border border-accent/20 bg-white p-5 space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-accent">
+            System Differentiators
+          </p>
+          <h2 className="mt-1 text-xl font-semibold text-navy">Novelty Points</h2>
+          <p className="mt-1 text-sm text-ink/60">
+            Evidence-first document intelligence designed to reduce unsupported answers and missed contradictions.
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            {
+              title: "Zero-Guessing Answer Gate",
+              description: "Answers are grounded in retrieved document evidence. When proof is missing, the system can abstain instead of inventing information.",
+            },
+            {
+              title: "Cross-Document Contradiction Detection",
+              description: "Identifies conflicting dates, amounts, clauses and conditions across selected documents, with evidence for comparison.",
+            },
+            {
+              title: "Exact Source Citations",
+              description: "Connects answers to document names, page numbers and supporting source passages for verification.",
+            },
+            {
+              title: "Amendment & Version Tracking",
+              description: "Tracks amendment relationships between documents to help identify changes and superseded provisions.",
+            },
+            {
+              title: "OCR Quality & Human Review",
+              description: "Evaluates extracted page content and flags low-confidence OCR text for human verification instead of silently correcting it.",
+            },
+            {
+              title: "Hindi Q&A with Local AI",
+              description: "Supports Hindi queries and Hindi explanations using a locally hosted Ollama model, without relying on a paid AI API.",
+            },
+          ].map((item) => (
+            <div key={item.title} className="rounded-xl border border-line bg-paper/60 p-4">
+              <h3 className="text-sm font-semibold text-navy">{item.title}</h3>
+              <p className="mt-2 text-xs leading-5 text-ink/65">{item.description}</p>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-xs text-ink/55">
+          Domain-independent: suitable for banking documents, insurance policies, contracts,
+          government circulars, regulatory documents and other complex PDFs.
+        </p>
+      </section>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-accent text-xs font-semibold uppercase tracking-[0.16em]">
@@ -419,9 +554,28 @@ export default function DocumentAIPage() {
                 onChange={(e) => setQuestion(e.target.value)}
                 rows={4}
                 maxLength={2000}
-                placeholder="Example: What is the applicable interest rate and when does the agreement expire?"
+                placeholder="Type your question or use the microphone below..."
                 className="w-full resize-y rounded-card border border-line bg-white p-3 text-sm text-navy outline-none focus:border-accent focus:ring-2 focus:ring-accent/10"
               />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-ink/50">
+                  Speak in {language === "hi" ? "Hindi" : "English"} or type your question.
+                </p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={toggleVoiceInput}
+                  disabled={asking}
+                >
+                  {listening ? <><MicOff size={14} /> Stop listening</> : <><Mic size={14} /> Speak question</>}
+                </Button>
+              </div>
+              {listening && (
+                <p className="text-xs font-medium text-risk">Listening… Speak clearly into your microphone.</p>
+              )}
+              {voiceError && (
+                <p role="alert" className="text-xs font-medium text-risk">{voiceError}</p>
+              )}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <label htmlFor="answer-language" className="text-xs text-ink/55">Answer language</label>
@@ -453,6 +607,138 @@ export default function DocumentAIPage() {
         <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Faithfulness score</p><p className="mt-1 text-2xl font-semibold text-navy">{answer?.faithfulness_score == null ? "—" : `${Math.round(answer.faithfulness_score * 100)}%`}</p><p className="text-xs text-ink/45">Claims grounded in verified source quotes / all claims</p></CardContent></Card>
         <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Question coverage</p><p className="mt-1 text-2xl font-semibold text-navy">{answer?.question_coverage_score == null ? "—" : `${Math.round(answer.question_coverage_score * 100)}%`}</p><p className="text-xs text-ink/45">Question terms found in returned evidence</p></CardContent></Card>
       </div>
+
+      {selectedDocs.some((doc) => structures[doc.id]) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileSearch size={17} /> Extracted document structure & quality review
+            </CardTitle>
+            <p className="text-xs text-ink/55">
+              Reconstructed sections, detected tables and OCR quality by page.
+              Low-confidence text is flagged for human verification, not automatically corrected.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {selectedDocs.filter((doc) => structures[doc.id]).map((doc) => {
+              const structure = structures[doc.id];
+              return (
+                <div key={doc.id} className="space-y-4 border-b border-line pb-5 last:border-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="break-all text-sm font-semibold text-navy">{doc.filename}</h3>
+                    <span className="text-xs text-ink/50">
+                      {structure.source_page_count} pages · {structure.section_count} sections · {structure.table_count} tables
+                    </span>
+                  </div>
+
+                  {structure.page_quality?.length ? (
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-navy">Page OCR quality</h4>
+                      {structure.page_quality.map((page) => {
+                        const meta = page.metadata || {};
+                        const quality = String(meta.quality_status || "UNKNOWN");
+                        const qualityClass =
+                          quality === "HIGH" || quality === "TEXT_LAYER_PRESENT"
+                            ? "bg-emerald-100 text-emerald-950 ring-emerald-600"
+                            : quality === "REVIEW"
+                              ? "bg-amber-200 text-amber-950 ring-amber-700"
+                              : quality === "LOW" || quality === "EMPTY"
+                                ? "bg-rose-200 text-rose-950 ring-rose-700"
+                                : "bg-slate-200 text-slate-950 ring-slate-600";
+                        return (
+                          <div key={page.page} className="rounded-card border border-line p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-sm font-semibold text-navy">Page {page.page}</span>
+                              <span className={`rounded px-2 py-1 text-[11px] font-bold ring-1 ${qualityClass}`}>{quality}</span>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-3 text-xs text-ink/60">
+                              <span>Source: {page.source_type}</span>
+                              <span>Words: {meta.text_word_count ?? "—"}</span>
+                              <span>OCR confidence: {typeof meta.ocr_confidence_avg === "number" ? `${Math.round(meta.ocr_confidence_avg * 100)}%` : "Not available"}</span>
+                              <span>Tables: {meta.table_count ?? 0}</span>
+                            </div>
+                            {Array.isArray(meta.warnings) && meta.warnings.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {meta.warnings.map((warning: string, i: number) => (
+                                  <span key={i} className="rounded bg-amber-100 px-2 py-1 text-[10px] font-medium text-amber-950">{warning.replaceAll("_", " ")}</span>
+                                ))}
+                              </div>
+                            )}
+                            {page.review_blocks?.length > 0 && (
+                              <div className="mt-3 rounded-md border border-rose-300 bg-rose-50 p-3">
+                                <p className="text-xs font-bold text-rose-950">
+                                  {page.review_blocks.length} low-confidence text block(s) — manual review needed
+                                </p>
+                                {page.review_blocks.map((block, i) => (
+                                  <div key={i} className="mt-2 border-t border-rose-200 pt-2">
+                                    <p className="break-words text-sm text-rose-950">{block.text || "Unreadable text"}</p>
+                                    <p className="mt-1 text-[11px] font-semibold text-rose-800">
+                                      Confidence: {Math.round(block.confidence * 100)}% · {block.reason.replaceAll("_", " ")}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-navy">Reconstructed sections</h4>
+                    {structure.sections?.length ? structure.sections.map((section) => (
+                      <details key={section.section_id} className="rounded-card border border-line p-3">
+                        <summary className="cursor-pointer text-sm font-semibold text-navy">
+                          {section.heading || "Unheaded text group"}
+                          <span className="ml-2 text-[11px] font-normal text-ink/50">
+                            Page(s) {section.page_numbers.join(", ")}
+                          </span>
+                        </summary>
+                        <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-ink/80">{section.text}</p>
+                        <p className="mt-2 text-[11px] text-ink/45">Grouping: {section.reconstruction.replaceAll("_", " ")}</p>
+                        {section.source_spans?.map((span, i) => (
+                          <div key={i} className="mt-2 rounded bg-cyan-50 p-2 text-xs text-cyan-950">
+                            Source · Page {span.page}: “{span.quote}”
+                          </div>
+                        ))}
+                      </details>
+                    )) : <p className="text-xs text-ink/50">No sections were reconstructed.</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-navy">Detected tables</h4>
+                    {structure.tables?.length ? structure.tables.map((table) => (
+                      <div key={table.table_id} className="overflow-x-auto rounded-card border border-line">
+                        <div className="flex flex-wrap justify-between gap-2 bg-slate-100 p-3 text-xs">
+                          <strong className="text-navy">Page(s) {table.page_numbers.join(", ")}</strong>
+                          <span className="text-ink/60">{table.continuation_status.replaceAll("_", " ")}</span>
+                        </div>
+                        <table className="w-full border-collapse text-left text-xs">
+                          <thead className="bg-cyan-100 text-cyan-950">
+                            <tr>{table.header.map((cell, i) => <th key={i} className="border border-cyan-200 p-2">{cell || "—"}</th>)}</tr>
+                          </thead>
+                          <tbody>
+                            {table.rows.slice(1).map((row, ri) => (
+                              <tr key={ri} className="odd:bg-white even:bg-slate-50">
+                                {table.header.map((_, ci) => <td key={ci} className="border border-line p-2 text-ink/80">{row[ci] || "—"}</td>)}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )) : <p className="text-xs text-ink/50">No tables detected. Scanned-page OCR table reconstruction is not currently supported.</p>}
+                  </div>
+                </div>
+              );
+            })}
+            <p className="text-[11px] text-ink/45">
+              Note: section grouping is heuristic. OCR confidence measures recognition confidence, not factual correctness.
+              Always verify flagged text against the original page.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

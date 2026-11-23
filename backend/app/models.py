@@ -5,7 +5,7 @@ MongoDB is schemaless, so there are no ORM model classes here anymore —
 documents are plain dicts validated against the Pydantic schemas in
 schemas.py at the API boundary. This module keeps the shared enums/constants
 so the rest of the codebase (routers, services) can still write
-`models.UserRole.ADMIN`, `models.RecordStatus.VERIFIED`, etc.
+`models.UserRole.ADMIN`, etc.
 """
 import enum
 import uuid
@@ -33,26 +33,12 @@ class DocumentStatus(str, enum.Enum):
     FAILED = "FAILED"
 
 
-class RecordStatus(str, enum.Enum):
-    PENDING_REVIEW = "PENDING_REVIEW"
-    AUTO_PASSED = "AUTO_PASSED"
-    VERIFIED = "VERIFIED"
-    REJECTED = "REJECTED"
-    UNRESOLVED = "UNRESOLVED"
-
-
 class ConfidenceBand(str, enum.Enum):
     HIGH = "HIGH"
     REVIEW = "REVIEW"
     VERIFY = "VERIFY"
 
 
-LAND_RECORD_FIELDS = [
-    "owner_name", "survey_number", "khasra_number", "khata_number",
-    "plot_area", "village", "tehsil", "district", "land_classification",
-    "ownership_details", "mutation_number", "mutation_date",
-    "registration_number", "registration_date",
-]
 
 # ---------------------------------------------------------------------------
 # Document shape reference (each is a plain dict stored in its collection):

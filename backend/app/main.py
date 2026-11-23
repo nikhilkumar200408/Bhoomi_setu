@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .database import create_indexes, ping
-from .routers import auth, documents, records, dashboard, search, audit, document_ai
+from .routers import auth, documents, audit, document_ai
 from .services.docai.errors import DocAIError
 
 
@@ -19,9 +19,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="BhoomiTrust AI",
-    description="AI-Powered Land Record Digitization & Validation System — "
-                 "Extract → Validate → Score → Verify → Trust. "
-                 "AI extraction and validation do not constitute legal ownership determination.",
+    description="Evidence-based Document AI for extraction, OCR, retrieval, contradiction detection, and source-cited answers.",
     version="2.0.0",
     lifespan=lifespan,
 )
@@ -36,9 +34,6 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(documents.router)
-app.include_router(records.router)
-app.include_router(dashboard.router)
-app.include_router(search.router)
 app.include_router(audit.router)
 app.include_router(document_ai.router)
 
@@ -64,6 +59,6 @@ async def health():
 def root():
     return {
         "product": "BhoomiTrust AI",
-        "tagline": "Extract. Validate. Score. Verify. Trust. — a Trust & Validation Layer for digitized land records.",
+        "tagline": "Extract. Retrieve. Verify. Explain. — Evidence-based Document Intelligence.",
         "docs": "/docs",
     }

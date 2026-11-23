@@ -16,9 +16,7 @@ dbmod.client = AsyncMongoMockClient()
 dbmod.db = dbmod.client[dbmod.settings.MONGODB_DB_NAME]
 dbmod.users_collection = dbmod.db["users"]
 dbmod.documents_collection = dbmod.db["documents"]
-dbmod.records_collection = dbmod.db["records"]
 dbmod.audit_collection = dbmod.db["audit"]
-dbmod.reference_locations_collection = dbmod.db["reference_locations"]
 dbmod.docai_pages_collection = dbmod.db["docai_pages"]
 dbmod.docai_jobs_collection = dbmod.db["docai_jobs"]
 dbmod.docai_answers_collection = dbmod.db["docai_answers"]
@@ -28,7 +26,7 @@ dbmod.docai_vectors_collection = dbmod.db["docai_vectors"]
 @pytest_asyncio.fixture(autouse=True)
 async def _clean_collections():
     """Every test starts against an empty in-memory database."""
-    for coll in (dbmod.users_collection, dbmod.documents_collection, dbmod.records_collection, dbmod.audit_collection,
+    for coll in (dbmod.users_collection, dbmod.documents_collection, dbmod.audit_collection,
                  dbmod.docai_pages_collection, dbmod.docai_jobs_collection, dbmod.docai_answers_collection, dbmod.docai_vectors_collection):
         await coll.delete_many({})
     yield

@@ -18,10 +18,53 @@ def _now() -> str:
 
 
 def build_chunks(pages: List[dict]) -> List[dict]:
+    """Build evidence chunks without trusting unreviewed OCR text.
+
+    Native PDF text keeps its existing behavior. OCR chunks are created only
+    from source-matched layout lines with confidence >= 0.60 and no review flag.
+    Chunk offsets always refer to the original page text for quote verification.
+    """
     chunks = []
     for p in pages:
-        for s, e in sentence_spans(p["text"]):
-            chunks.append({"page": p, "start": s, "end": e, "tokens": tokens(p["text"][s:e])})
+        page_text = p.get("text") or ""
+        if p.get("source_type") != "OCR_TEXT":
+            for s, e in sentence_spans(page_text):
+                chunks.append({
+                    "page": p, "start": s, "end": e,
+                    "tokens": tokens(page_text[s:e]),
+                })
+            continue
+
+        blocks = p.get("layout_blocks") or []
+        cursor = 0
+        for block in blocks:
+            line = " ".join(str(block.get("text") or "").split())
+            if not line:
+                continue
+            try:
+                confidence = float(block.get("confidence", 0))
+            except (TypeError, ValueError):
+                continue
+            if confidence < 0.60 or block.get("review_required", False):
+                continue
+
+            # Match the OCR line back to the original page text. Never create
+            # evidence from a line whose exact source position cannot be found.
+            start = page_text.find(line, cursor)
+            if start < 0:
+                start = page_text.find(line)
+            if start < 0:
+                continue
+            end = start + len(line)
+            cursor = end
+
+            for local_start, local_end in sentence_spans(line):
+                s, e = start + local_start, start + local_end
+                if s < e:
+                    chunks.append({
+                        "page": p, "start": s, "end": e,
+                        "tokens": tokens(page_text[s:e]),
+                    })
     return chunks
 
 

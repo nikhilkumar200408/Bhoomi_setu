@@ -20,12 +20,36 @@ def _clean(value: Any) -> str:
 
 
 def _lines(page: dict) -> List[str]:
-    # Layout blocks retain reading-order line groups even when page text is normalized.
+    # Preserve OCR provenance, but never promote low-confidence OCR noise
+    # into reconstructed legal/document sections.
     blocks = page.get("layout_blocks") or []
-    block_lines = [str(block.get("text", "")).strip() for block in blocks if str(block.get("text", "")).strip()]
-    if block_lines:
-        return block_lines
-    return [line.strip() for line in str(page.get("text", "")).splitlines() if line.strip()]
+    if blocks:
+        is_ocr = page.get("source_type") == "OCR_TEXT"
+        result = []
+        for block in blocks:
+            text = str(block.get("text", "")).strip()
+            if not text:
+                continue
+            if is_ocr:
+                try:
+                    confidence = float(block.get("confidence"))
+                except (TypeError, ValueError):
+                    continue
+                if confidence < 0.60:
+                    continue
+            result.append(text)
+        return result
+
+    # OCR pages without confidence-bearing layout blocks are not safe
+    # to reconstruct automatically.
+    if page.get("source_type") == "OCR_TEXT":
+        return []
+
+    return [
+        line.strip()
+        for line in str(page.get("text", "")).splitlines()
+        if line.strip()
+    ]
 
 
 def reconstruct_sections(pages: List[dict]) -> List[dict]:
@@ -154,9 +178,33 @@ def build_document_structure(pages: List[dict]) -> dict:
     """Return a document-level structure manifest with provenance preserved."""
     sections = reconstruct_sections(pages)
     tables = reconstruct_tables(pages)
+    page_quality = []
+    for page in pages:
+        review_blocks = []
+        for block in page.get("layout_blocks") or []:
+            try:
+                confidence = float(block.get("confidence"))
+            except (TypeError, ValueError):
+                continue
+            if 0 <= confidence < 0.60:
+                review_blocks.append({
+                    "text": block.get("text", ""),
+                    "bbox": block.get("bbox", []),
+                    "confidence": round(confidence, 3),
+                    "reason": "LOW_OCR_CONFIDENCE",
+                })
+
+        page_quality.append({
+            "page": page.get("page"),
+            "source_type": page.get("source_type"),
+            "metadata": page.get("extraction_metadata") or {},
+            "review_blocks": review_blocks,
+        })
+
     return {
         "sections": sections,
         "tables": tables,
+        "page_quality": page_quality,
         "section_count": len(sections),
         "table_count": len(tables),
         "source_page_count": len({(p.get("document_id"), p.get("page")) for p in pages}),
@@ -164,5 +212,6 @@ def build_document_structure(pages: List[dict]) -> dict:
             "SECTION_GROUPING_IS_HEURISTIC",
             "TABLES_JOIN_ONLY_ON_EXACT_ADJACENT_PAGE_HEADER_MATCH",
             "SOURCE_PAGE_QUOTES_REMAIN_AUTHORITATIVE",
+            "LOW_CONFIDENCE_OCR_REQUIRES_HUMAN_REVIEW",
         ],
     }

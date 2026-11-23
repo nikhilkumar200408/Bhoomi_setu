@@ -6,10 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import clsx from "clsx";
 import { motion } from "framer-motion";
 import {
-  LayoutDashboard,
-  FileStack,
-  UploadCloud,
-  ClipboardCheck,
   History,
   ShieldCheck,
   LogOut,
@@ -22,10 +18,6 @@ import { LoadingState } from "@/components/ui/States";
 
 const NAV_ITEMS = [
   { href: "/document-ai", key: "document_ai", icon: BrainCircuit },
-  { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },
-  { href: "/documents", key: "documents", icon: FileStack },
-  { href: "/documents/upload", key: "upload", icon: UploadCloud },
-  { href: "/records", key: "records", icon: ClipboardCheck },
   { href: "/audit", key: "audit_trail", icon: History },
 ];
 
@@ -58,7 +50,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
         <nav className="flex-1 space-y-1">
           {NAV_ITEMS.map((item) => {
-            const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+            const active = pathname === item.href || pathname.startsWith(item.href + "/");
             const Icon = item.icon;
             return (
               <Link
@@ -119,7 +111,7 @@ function TopBar() {
         onSubmit={(e) => {
           e.preventDefault();
           const q = (e.currentTarget.elements.namedItem("q") as HTMLInputElement).value.trim();
-          if (q) router.push(`/records?q=${encodeURIComponent(q)}`);
+          if (q) router.push(`/document-ai?q=${encodeURIComponent(q)}`);
         }}
         className="relative w-full max-w-sm"
       >
