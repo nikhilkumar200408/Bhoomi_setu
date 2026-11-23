@@ -104,9 +104,18 @@ Do not call the system "complete" or "production-ready" until outstanding items 
 | Citation and important-point highlighting | Implemented in code | Source quotes and key terms/numbers receive amber highlighting in the answer and evidence panel. |
 | Analytics | Implemented in code | Claim-status distribution and evidence-per-document charts added alongside indexing and quality charts. |
 | LLM one-line summary | Implemented in UI | Model draft is presented as a concise first-sentence summary and remains explicitly unverified. |
-| Human audit and correction | Planned | Add privileged review correction endpoint, immutable original claim/evidence, reasoned correction history and audit trail. |
-| Hindi query support | Planned | Add local query translation/retrieval and test Hindi source OCR; no cloud translation APIs. |
-| Public web-page ingestion | Planned | Add URL import with SSRF protections, robots/terms safeguards, source URL/date provenance and HTML-to-text extraction. |
+| Human audit and correction | Implemented in code | Revenue Officer correction endpoint stores corrected wording separately, keeps source evidence immutable, and exposes answer audit history. Tests added; CI/manual verification pending. |
+| Hindi query support | Implemented in code | Hindi-selected queries use local Ollama translation for English-source retrieval; OCR provider already tries eng/hin/kan. Requires Ollama enabled and Tesseract language packs; Hindi end-to-end tests remain pending. |
+| Public web-page ingestion | Implemented in code | HTTPS-only, exact-host allowlist, public-IP validation, redirects blocked, robots.txt checked, response/time/size bounded; extracted page text is indexed as a traceable source. Only approved public pages; JS/login/paywall bypass is not supported. Security tests and operator configuration remain pending. |
 | PDF source highlight | Planned | Link citations to page viewer with exact text-span highlighting. |
 
 Do not report Phase 10 complete until backend tests, frontend lint/build, security tests, and manual Hindi/reset/citation workflows pass.
+
+
+## Phase 10 implementation update (2026-11-23)
+
+- Implemented: supported-claim faithfulness ratio, visible workspace Reset, highlighted source citations/key facts, claim-status and evidence-source charts, concise LLM summary presentation.
+- Implemented: Revenue Officer claim correction with immutable original text/evidence and answer-scoped audit history.
+- Implemented: local Ollama Hindi query translation and UI fallback notice; OCR engine supports English/Hindi/Kannada language passes when the corresponding traineddata is installed.
+- Implemented: allowlisted public webpage import with HTTPS-only URLs, exact-host allowlist, public IP validation, redirects disabled, robots.txt check, bounded fetch and provenance metadata. Configure WEB_IMPORT_ALLOWED_DOMAINS as a comma-separated list of exact hostnames. JavaScript-rendered, login-only and paywalled pages are intentionally unsupported.
+- Not verified: latest full CI, frontend production build, manual reviewer correction, Hindi retrieval against representative Hindi PDFs, webpage import security tests, and actual browser reset visibility.
