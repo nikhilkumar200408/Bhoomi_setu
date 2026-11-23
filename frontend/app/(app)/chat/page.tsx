@@ -1,8 +1,7 @@
 "use client";
 
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { AlertCircle, ArrowDown, Bot, Check, ChevronDown, FileText, Loader2, MessageCircle, Plus, Send, ShieldCheck, Sparkles, Trash2, User, X } from "lucide-react";
+import { AlertCircle, Bot, Check, ChevronDown, FileText, Loader2, MessageCircle, Plus, Send, ShieldCheck, Sparkles, Trash2, User, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { LoadingState } from "@/components/ui/States";
@@ -29,7 +28,6 @@ function timeLabel(value: string) {
 }
 
 export default function ChatPage() {
-  const router = useRouter();
   const [documents, setDocuments] = useState<Doc[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
