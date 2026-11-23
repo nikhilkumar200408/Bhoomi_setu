@@ -91,3 +91,30 @@ def test_ollama_failure_is_normalized(monkeypatch):
     monkeypatch.setattr(ollama.httpx, "post", fail)
     with pytest.raises(ollama.OllamaError, match="Local Ollama inference failed"):
         ollama.generate_evidence_draft("What is the rate?", claims, evidence)
+
+
+
+def test_ollama_hindi_mode_requests_hindi_without_translating_source_quotes(monkeypatch):
+    monkeypatch.setattr(settings, "OLLAMA_ENABLED", True)
+    monkeypatch.setattr(settings, "OLLAMA_BASE_URL", "http://ollama.test")
+    monkeypatch.setattr(settings, "OLLAMA_CHAT_MODEL", "llama3.2")
+    claims, evidence = _inputs()
+    captured = {}
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"message": {"content": "दस्तावेज़ के अनुसार दर 8% है [policy.pdf, p.4]."}}
+
+    def fake_post(url, **kwargs):
+        captured.update(kwargs)
+        return Response()
+
+    monkeypatch.setattr(ollama.httpx, "post", fake_post)
+    result = ollama.generate_evidence_draft("ब्याज दर क्या है?", claims, evidence, "hi")
+    system_prompt = captured["json"]["messages"][0]["content"]
+    assert "natural Hindi" in system_prompt
+    assert "Do not translate or alter quoted source text" in system_prompt
+    assert result["status"] == "DRAFT_UNVERIFIED"
