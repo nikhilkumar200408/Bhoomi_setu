@@ -11,6 +11,7 @@ from app.database import users_collection
 from app.main import app
 from app.services.docai import facts as F
 from app.services.docai import qa
+from app.services.docai.calculations import calculate_financial_value
 
 SAMPLE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
 USERS = [("op_a", "Operator@123", "DATA_ENTRY_OPERATOR"), ("op_b", "Operator@123", "DATA_ENTRY_OPERATOR"),
@@ -402,3 +403,27 @@ def test_processing_fee_and_overdue_charge_are_not_false_contradictions():
 
     assert len(processing_conflicts) == 1
     assert overdue_conflicts == []
+
+
+
+def test_financial_calculations_return_formula_and_working():
+    simple = calculate_financial_value("simple_interest", 100000, 8, 2, "years")
+    assert simple["result"] == {"interest": 16000.0, "total_amount": 116000.0}
+    assert simple["formula"] == "SI = P × R × T / 100"
+    assert "100000" in simple["working"]
+    assert simple["input_source"] == "USER_PROVIDED"
+
+    emi = calculate_financial_value("emi", 120000, 0, 12, "months")
+    assert emi["result"]["monthly_emi"] == 10000.0
+    assert emi["result"]["total_payable"] == 120000.0
+
+    compound = calculate_financial_value("compound_interest", 100000, 12, 1, "years", 12)
+    assert compound["result"]["total_amount"] > 112000.0
+
+
+def test_financial_calculator_rejects_invalid_inputs():
+    import pytest
+    with pytest.raises(ValueError):
+        calculate_financial_value("simple_interest", 0, 8, 2, "years")
+    with pytest.raises(ValueError):
+        calculate_financial_value("unknown", 100000, 8, 2, "years")
