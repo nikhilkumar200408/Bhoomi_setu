@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .database import create_indexes, ping
-from .routers import auth, documents, audit, document_ai, chat
+from .routers import auth, documents, audit, document_ai, chat, intelligence
 from .services.docai.errors import DocAIError
 
 
@@ -37,6 +37,7 @@ app.include_router(documents.router)
 app.include_router(audit.router)
 app.include_router(document_ai.router)
 app.include_router(chat.router)
+app.include_router(intelligence.router)
 
 
 @app.exception_handler(DocAIError)
