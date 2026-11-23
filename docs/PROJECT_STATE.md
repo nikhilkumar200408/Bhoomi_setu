@@ -55,3 +55,11 @@ See `docs/IMPLEMENTATION_PROGRESS.md` for the detailed status and unverified tes
 ## Phase 10 status
 
 Phase 10 adds explainability and review capabilities without changing the evidence-first authority model. Initial code updates include a stricter supported-claim faithfulness ratio, an always-visible workspace reset control, citation/key-point highlighting, additional analytics charts, and a one-line LLM summary display. Human correction/audit, local Hindi retrieval, and safe public web-page ingestion remain follow-up implementation items and are not yet complete.
+
+
+## Phase 10 additions (code-level; verification pending)
+
+- Claim corrections are reviewer annotations stored separately from original claims and source quotes, with answer-scoped audit history.
+- Hindi query translation uses local Ollama only; source OCR uses installed Tesseract language data. The answer must still cite original source text.
+- Public webpage ingestion is restricted to administrator-allowlisted HTTPS hosts, public IPs, robots.txt permissions and bounded HTML extraction. Imported text retains its source URL and fetch timestamp.
+- Faithfulness reports the proportion of fully supported claims with verified source quotes; it is not a probability of truth and does not measure completeness.
