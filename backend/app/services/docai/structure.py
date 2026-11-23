@@ -6,13 +6,13 @@ when adjacent pages expose the same non-empty header. It never invents missing c
 import re
 from typing import Any, Dict, List
 
-_SPACE = re.compile(r"\\s+")
+_SPACE = re.compile(r"\s+")
 _HEADING = re.compile(
-    r"^(?:(?:section|clause|article|schedule|annexure|appendix)\\s+"
-    r"[A-Z0-9][A-Z0-9.()/-]*|[0-9]+(?:\\.[0-9]+)*[.)]?\\s+.{2,})$",
+    r"^(?:(?:section|clause|article|schedule|annexure|appendix)\s+"
+    r"[A-Z0-9][A-Z0-9.()/-]*|[0-9]+(?:\.[0-9]+)*[.)]?\s+.{2,})$",
     re.IGNORECASE,
 )
-_CONTINUATION_END = re.compile(r"(?:[-,:;]\\s*|\\b(?:and|or|of|the|to|with|including)\\s*)$", re.I)
+_CONTINUATION_END = re.compile(r"(?:[-,:;]\s*|\b(?:and|or|of|the|to|with|including)\s*)$", re.I)
 
 
 def _clean(value: Any) -> str:
@@ -40,7 +40,7 @@ def reconstruct_sections(pages: List[dict]) -> List[dict]:
     def flush_span():
         nonlocal span_page, span_lines
         if current is not None and span_page is not None and span_lines:
-            fragment = "\\n".join(span_lines)
+            fragment = "\n".join(span_lines)
             current["source_spans"].append({
                 "document_id": current["document_id"],
                 "filename": current["filename"],
@@ -83,7 +83,7 @@ def reconstruct_sections(pages: List[dict]) -> List[dict]:
                 flush_span()
             span_page = page_no
             span_lines.append(line)
-            current["text"] = (current["text"] + "\\n" + line).strip()
+            current["text"] = (current["text"] + "\n" + line).strip()
     flush_section()
     return sections
 
