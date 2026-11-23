@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { LoadingState, ErrorState } from "@/components/ui/States";
 
 type Doc = {
-  id: string; filename: string; status: string; docai_status?: string;
+  id: string; filename: string; status: string; docai_status?: string; source_url?: string;
   file_size_bytes?: number; uploaded_at?: string;
 };
 type Job = { status: string; pages_total?: number; pages_processed?: number; error?: { message?: string } };
@@ -58,6 +58,8 @@ export default function DocumentAIPage() {
   const [loading, setLoading] = useState(true);
   const [indexing, setIndexing] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [webUrl, setWebUrl] = useState("");
+  const [importingWeb, setImportingWeb] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [indexMessage, setIndexMessage] = useState("");
@@ -135,6 +137,23 @@ export default function DocumentAIPage() {
   );
   const isIndexed = (doc: Doc) => doc.docai_status === "INDEXED" || indexedIds.includes(doc.id);
   const indexedCount = selectedDocs.filter(isIndexed).length;
+
+  async function importWebpage() {
+    if (!webUrl.trim()) return;
+    setImportingWeb(true);
+    setError(null);
+    try {
+      const result = await api.post<{ id: string; filename: string; source_url: string; message: string }>("/api/document-ai/sources/webpage/import", { url: webUrl.trim() });
+      await loadDocuments();
+      setSelected((current) => Array.from(new Set([...current, result.id])));
+      setWebUrl("");
+      setIndexMessage(result.message);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Webpage import failed. Check the URL and administrator allowlist.");
+    } finally {
+      setImportingWeb(false);
+    }
+  }
 
   async function uploadFiles(files: FileList | null) {
     if (!files?.length) return;
@@ -330,6 +349,16 @@ export default function DocumentAIPage() {
           <input ref={folderInputRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
             className="hidden" disabled={uploading}
             onChange={(event) => { void uploadFiles(event.target.files); event.currentTarget.value = ""; }} />
+          <div className="flex w-full flex-wrap gap-2 border-t border-line pt-3">
+            <input type="url" value={webUrl} onChange={(event) => setWebUrl(event.target.value)}
+              placeholder="https://public-website.example/page"
+              className="min-w-[220px] flex-1 rounded-card border border-line bg-white px-3 py-2 text-sm text-navy"
+              disabled={importingWeb} />
+            <Button type="button" variant="secondary" onClick={() => void importWebpage()} disabled={importingWeb || !webUrl.trim()}>
+              {importingWeb ? <><Loader2 size={14} className="animate-spin" /> Importing…</> : "Import webpage"}
+            </Button>
+          </div>
+          <p className="w-full text-[11px] text-ink/45">Public HTTPS pages only. The host must be administrator-allowlisted; robots.txt and network safety checks are enforced.</p>
         </CardContent>
       </Card>
 
@@ -573,6 +602,7 @@ export default function DocumentAIPage() {
                       <span className="text-ink/50">Page {item.page_number}</span>
                     </div>
                     <p className="mt-2 rounded-md bg-amber-50 px-2 py-2 text-sm leading-6 text-amber-950">“{highlightImportantText(item.quote)}”</p>
+                    {item.source_url && <a href={item.source_url} target="_blank" rel="noreferrer" className="mt-1 inline-block text-[11px] text-accent underline">Open original webpage</a>}
                     <p className="mt-2 flex items-center gap-1 text-[11px] text-verified">
                       <CheckCircle2 size={12} /> {item.verification?.quote_found_in_source ? "Quote verified against source page" : "Source quote attached"}
                     </p>
