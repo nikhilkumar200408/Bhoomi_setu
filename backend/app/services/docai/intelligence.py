@@ -5,7 +5,6 @@ Extracted entities are candidates for review, not legal conclusions.
 """
 import hashlib
 import re
-from collections import defaultdict
 from typing import Dict, List, Tuple
 
 from .nlp import tokens, bm25_rank
@@ -59,7 +58,6 @@ def extract_entities(pages: List[dict]) -> dict:
     edges: Dict[str, dict] = {}
     fields: List[dict] = []
     visual: List[dict] = []
-    page_lookup = {(p["document_id"], p["page"]): p for p in pages}
     docs = {}
     for page in pages:
         did = page["document_id"]
