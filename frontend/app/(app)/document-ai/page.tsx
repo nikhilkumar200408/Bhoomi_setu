@@ -49,6 +49,7 @@ export default function DocumentAIPage() {
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [indexMessage, setIndexMessage] = useState("");
   const [question, setQuestion] = useState("");
+  const [language, setLanguage] = useState<"en" | "hi">("en");
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -175,7 +176,7 @@ export default function DocumentAIPage() {
     setAnswer(null);
     try {
       const result = await api.post<Answer>("/api/document-ai/qa/ask", {
-        question: question.trim(), document_ids: selected, language: "en",
+        question: question.trim(), document_ids: selected, language,
         include_superseded_documents: true, max_evidence_per_claim: 5,
       });
       setAnswer(result);
@@ -290,7 +291,15 @@ export default function DocumentAIPage() {
                 className="w-full resize-y rounded-card border border-line bg-white p-3 text-sm text-navy outline-none focus:border-accent focus:ring-2 focus:ring-accent/10"
               />
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <span className="text-xs text-ink/45">Up to 2,000 characters · English query</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label htmlFor="answer-language" className="text-xs text-ink/55">Answer language</label>
+                  <select id="answer-language" value={language} onChange={(event) => setLanguage(event.target.value as "en" | "hi")}
+                    className="rounded-card border border-line bg-white px-2 py-1.5 text-xs text-navy">
+                    <option value="en">English</option>
+                    <option value="hi">हिन्दी (Hindi)</option>
+                  </select>
+                  <span className="text-xs text-ink/45">Up to 2,000 characters</span>
+                </div>
                 <Button type="submit" disabled={!question.trim() || !selected.length || indexedCount !== selected.length || asking}>
                   {asking ? <><Loader2 size={14} className="animate-spin" /> Searching evidence…</> : <><Send size={14} /> Ask documents</>}
                 </Button>
@@ -307,7 +316,7 @@ export default function DocumentAIPage() {
         <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Documents</p><p className="mt-1 text-2xl font-semibold text-navy">{documents.length}</p><p className="text-xs text-ink/45">{documents.filter(isIndexed).length} indexed</p></CardContent></Card>
         <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Claims checked</p><p className="mt-1 text-2xl font-semibold text-navy">{answer?.claims.length ?? 0}</p><p className="text-xs text-ink/45">{answer?.claims.filter(c => c.status === "SUPPORTED").length ?? 0} fully supported</p></CardContent></Card>
         <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Contradictions</p><p className="mt-1 text-2xl font-semibold text-navy">{conflicts.length}</p><p className="text-xs text-ink/45">Across current selection</p></CardContent></Card>
-        <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Faithfulness score</p><p className="mt-1 text-2xl font-semibold text-navy">{answer?.faithfulness_score == null ? "—" : `${Math.round(answer.faithfulness_score * 100)}%`}</p><p className="text-xs text-ink/45">Fully supported claims / all claims</p></CardContent></Card>
+        <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Faithfulness score</p><p className="mt-1 text-2xl font-semibold text-navy">{answer?.faithfulness_score == null ? "—" : `${Math.round(answer.faithfulness_score * 100)}%`}</p><p className="text-xs text-ink/45">Claims grounded in verified source quotes / all claims</p></CardContent></Card>
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
@@ -319,7 +328,7 @@ export default function DocumentAIPage() {
             <Bar dataKey="count" fill="#2563eb" radius={[6,6,0,0]} /></BarChart></ResponsiveContainer></div>
         </CardContent></Card>
         <Card><CardHeader><CardTitle>Answer quality breakdown</CardTitle></CardHeader><CardContent>
-          <div className="mb-3 flex items-center justify-between text-sm"><span className="text-ink/60">Faithfulness · fully supported claims</span>
+          <div className="mb-3 flex items-center justify-between text-sm"><span className="text-ink/60">Faithfulness · verified source grounding</span>
             <strong className="text-navy">{answer?.faithfulness_score == null ? "Not calculated" : `${Math.round(answer.faithfulness_score * 100)}%`}</strong></div>
           <div className="h-3 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-verified transition-all"
             style={{width:`${Math.max(0,Math.min(100,(answer?.faithfulness_score ?? 0)*100))}%`}} /></div>
@@ -329,7 +338,7 @@ export default function DocumentAIPage() {
             {name:"Review",count:answer?.claims.filter(c=>c.status!=="SUPPORTED" && c.status!=="PARTIALLY_SUPPORTED").length ?? 0},
           ]}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis allowDecimals={false} /><Tooltip />
             <Bar dataKey="count" fill="#0f766e" radius={[6,6,0,0]} /></BarChart></ResponsiveContainer></div>
-          <p className="text-xs text-ink/45">Score = fully supported claims divided by all claims. Ask a question to populate answer metrics.</p>
+          <p className="text-xs text-ink/45">Score = claims matched to verified source quotations divided by all claims. Relevance coverage is shown separately on each claim.</p>
         </CardContent></Card>
       </div>
 
