@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   AlertTriangle, BrainCircuit, CheckCircle2, FileSearch, GitBranch,
   Loader2, RefreshCw, Send, ShieldCheck, Sparkles, UploadCloud,
@@ -28,7 +29,7 @@ type Conflict = {
   evidence: Evidence[]; explanation?: string;
 };
 type Answer = {
-  answer: string; abstained: boolean; faithfulness_score: number | null;
+  answer_id?: string; answer: string; abstained: boolean; faithfulness_score: number | null;
   faithfulness_method?: string; claims: Claim[]; evidence: Evidence[];
   conflicts: Conflict[]; missing_evidence?: { description: string }[];
   llm_assistance?: { status: string; draft?: string | null; model?: string | null; notice?: string };
@@ -44,6 +45,8 @@ export default function DocumentAIPage() {
   const [loading, setLoading] = useState(true);
   const [indexing, setIndexing] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const [indexMessage, setIndexMessage] = useState("");
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
@@ -67,6 +70,38 @@ export default function DocumentAIPage() {
   }
 
   useEffect(() => { loadDocuments(); }, []);
+  useEffect(() => {
+    folderInputRef.current?.setAttribute("webkitdirectory", "");
+    folderInputRef.current?.setAttribute("directory", "");
+  }, []);
+
+  async function refreshWorkspace() {
+    setRefreshing(true);
+    try {
+      await loadDocuments();
+      const ids = selected;
+      if (ids.length) {
+        const query = encodeURIComponent(ids.join(","));
+        const [c, a] = await Promise.all([
+          api.get<PageResult<Conflict>>(`/api/document-ai/contradictions?document_ids=${query}&limit=100`),
+          api.get<PageResult<Record<string, unknown>>>(`/api/document-ai/amendments?document_ids=${query}&limit=100`),
+        ]);
+        setConflicts(c.items || []);
+        setAmendments(a.items || []);
+      } else {
+        setConflicts([]);
+        setAmendments([]);
+      }
+      if (answer?.answer_id) {
+        const latest = await api.get<Answer>(`/api/document-ai/answers/${answer.answer_id}`);
+        setAnswer(latest);
+      }
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Workspace refresh failed.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   const selectedDocs = useMemo(
     () => documents.filter((doc) => selected.includes(doc.id)),
@@ -173,8 +208,8 @@ export default function DocumentAIPage() {
             Answers stay tied to page-level source evidence.
           </p>
         </div>
-        <Button variant="secondary" onClick={loadDocuments} disabled={indexing || asking || uploading}>
-          <RefreshCw size={14} /> Refresh
+        <Button variant="secondary" onClick={refreshWorkspace} disabled={indexing || asking || uploading || refreshing}>
+          <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} /> {refreshing ? "Refreshing…" : "Refresh"}
         </Button>
       </div>
 
@@ -191,6 +226,12 @@ export default function DocumentAIPage() {
             {uploading ? "Uploading…" : "Upload documents"}
             <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" className="hidden" disabled={uploading} onChange={(event) => { void uploadFiles(event.target.files); event.currentTarget.value = ""; }} />
           </label>
+          <Button type="button" variant="secondary" onClick={() => folderInputRef.current?.click()} disabled={uploading}>
+            <FileSearch size={14} /> Choose folder
+          </Button>
+          <input ref={folderInputRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+            className="hidden" disabled={uploading}
+            onChange={(event) => { void uploadFiles(event.target.files); event.currentTarget.value = ""; }} />
         </CardContent>
       </Card>
 
@@ -262,6 +303,36 @@ export default function DocumentAIPage() {
         </Card>
       </div>
 
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Documents</p><p className="mt-1 text-2xl font-semibold text-navy">{documents.length}</p><p className="text-xs text-ink/45">{documents.filter(isIndexed).length} indexed</p></CardContent></Card>
+        <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Claims checked</p><p className="mt-1 text-2xl font-semibold text-navy">{answer?.claims.length ?? 0}</p><p className="text-xs text-ink/45">{answer?.claims.filter(c => c.status === "SUPPORTED").length ?? 0} fully supported</p></CardContent></Card>
+        <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Contradictions</p><p className="mt-1 text-2xl font-semibold text-navy">{conflicts.length}</p><p className="text-xs text-ink/45">Across current selection</p></CardContent></Card>
+        <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Faithfulness score</p><p className="mt-1 text-2xl font-semibold text-navy">{answer?.faithfulness_score == null ? "—" : `${Math.round(answer.faithfulness_score * 100)}%`}</p><p className="text-xs text-ink/45">Fully supported claims / all claims</p></CardContent></Card>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <Card><CardHeader><CardTitle>Document indexing status</CardTitle></CardHeader><CardContent>
+          <div className="h-64 w-full"><ResponsiveContainer width="100%" height="100%"><BarChart data={[
+            {name:"Indexed",count:documents.filter(isIndexed).length},
+            {name:"Pending",count:documents.filter(d => !isIndexed(d)).length},
+          ]}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis allowDecimals={false} /><Tooltip />
+            <Bar dataKey="count" fill="#2563eb" radius={[6,6,0,0]} /></BarChart></ResponsiveContainer></div>
+        </CardContent></Card>
+        <Card><CardHeader><CardTitle>Answer quality breakdown</CardTitle></CardHeader><CardContent>
+          <div className="mb-3 flex items-center justify-between text-sm"><span className="text-ink/60">Faithfulness · fully supported claims</span>
+            <strong className="text-navy">{answer?.faithfulness_score == null ? "Not calculated" : `${Math.round(answer.faithfulness_score * 100)}%`}</strong></div>
+          <div className="h-3 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-verified transition-all"
+            style={{width:`${Math.max(0,Math.min(100,(answer?.faithfulness_score ?? 0)*100))}%`}} /></div>
+          <div className="mt-5 h-44 w-full"><ResponsiveContainer width="100%" height="100%"><BarChart data={[
+            {name:"Supported",count:answer?.claims.filter(c=>c.status==="SUPPORTED").length ?? 0},
+            {name:"Partial",count:answer?.claims.filter(c=>c.status==="PARTIALLY_SUPPORTED").length ?? 0},
+            {name:"Review",count:answer?.claims.filter(c=>c.status!=="SUPPORTED" && c.status!=="PARTIALLY_SUPPORTED").length ?? 0},
+          ]}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis allowDecimals={false} /><Tooltip />
+            <Bar dataKey="count" fill="#0f766e" radius={[6,6,0,0]} /></BarChart></ResponsiveContainer></div>
+          <p className="text-xs text-ink/45">Score = fully supported claims divided by all claims. Ask a question to populate answer metrics.</p>
+        </CardContent></Card>
+      </div>
+
       {answer && (
         <div className="space-y-5">
           <Card>
@@ -284,11 +355,11 @@ export default function DocumentAIPage() {
           {answer.llm_assistance && (
             <Card>
               <CardContent className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-semibold text-navy"><Sparkles size={15} /> Local model assistance</div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-navy"><Sparkles size={15} /> LLM-generated evidence summary</div>
                 <p className="text-xs text-ink/55">Status: {answer.llm_assistance.status} · Model: {answer.llm_assistance.model || "Not enabled"}</p>
                 {answer.llm_assistance.draft && (
                   <div className="rounded-card border border-review/30 bg-review-bg/40 p-3">
-                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-review">Unverified Llama draft — not authoritative</p>
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-review">LLM summary draft — verify against the cited source passages</p>
                     <p className="whitespace-pre-wrap text-sm text-navy">{answer.llm_assistance.draft}</p>
                     <p className="mt-2 text-xs text-ink/55">{answer.llm_assistance.notice}</p>
                   </div>
