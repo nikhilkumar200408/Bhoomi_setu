@@ -1,6 +1,5 @@
 """Persistent, ownership-scoped RAG chat sessions for TrustLens AI."""
 import re
-from datetime import datetime
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -44,7 +43,7 @@ async def list_chat_sessions(limit: int = Query(default=30, ge=1, le=100),
                              user: dict = Depends(get_current_user)):
     cursor = chat_sessions_collection.find(
         {"user_id": user["_id"]},
-        {"messages": {"$slice": -1}, "user_id": 0},
+        {"messages": 0, "user_id": 0},
     ).sort("updated_at", -1).limit(limit)
     items = []
     async for session in cursor:
@@ -55,7 +54,7 @@ async def list_chat_sessions(limit: int = Query(default=30, ge=1, le=100),
             "document_ids": session.get("document_ids", []),
             "updated_at": session.get("updated_at"),
             "message_count": session.get("message_count", 0),
-            "preview": (last.get("content") or "")[:140],
+            "preview": session.get("last_message_preview", ""),
         })
     return {"items": items}
 
@@ -121,7 +120,8 @@ async def send_chat_message(payload: ChatMessageRequest, user: dict = Depends(ge
         await chat_sessions_collection.update_one(
             {"_id": session_id, "user_id": user["_id"]},
             {"$push": {"messages": {"$each": [user_message, assistant_message], "$slice": -MAX_MESSAGES}},
-             "$set": {"updated_at": now, "document_ids": payload.document_ids},
+             "$set": {"updated_at": now, "document_ids": payload.document_ids,
+                      "last_message_preview": question[:140]},
              "$inc": {"message_count": 2}},
         )
     else:
@@ -130,7 +130,8 @@ async def send_chat_message(payload: ChatMessageRequest, user: dict = Depends(ge
             "title": question[:72] + ("…" if len(question) > 72 else ""),
             "document_ids": payload.document_ids,
             "messages": [user_message, assistant_message],
-            "message_count": 2, "created_at": now, "updated_at": now,
+            "message_count": 2, "last_message_preview": question[:140],
+            "created_at": now, "updated_at": now,
         })
 
     return {"session_id": session_id, "user_message": user_message,
