@@ -60,7 +60,8 @@ def _job_out(j: dict) -> dict:
     return {"job_id": j["_id"], "document_id": j["document_id"], "status": j["status"],
             "pages_total": j.get("pages_total"), "pages_processed": j.get("pages_processed", 0),
             "chunks_created": j.get("chunks_created", 0), "error": j.get("error"),
-            "created_at": _iso(j["created_at"]), "completed_at": _iso(j["completed_at"]) if j.get("completed_at") else None,\n            "structure": j.get("structure")}
+            "created_at": _iso(j["created_at"]), "completed_at": _iso(j["completed_at"]) if j.get("completed_at") else None,
+            "structure": j.get("structure")}
 
 
 async def _run_index(job_id: str, document: dict) -> None:
