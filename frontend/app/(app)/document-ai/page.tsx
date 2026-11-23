@@ -32,7 +32,7 @@ type Conflict = {
 };
 type Answer = {
   answer_id?: string; answer: string; abstained: boolean; faithfulness_score: number | null;
-  faithfulness_method?: string; claims: Claim[]; evidence: Evidence[];
+  faithfulness_method?: string; claims: Claim[]; evidence: Evidence[]; language_notice?: string | null;
   conflicts: Conflict[]; missing_evidence?: { description: string }[];
   llm_assistance?: { status: string; draft?: string | null; model?: string | null; notice?: string };
 };
@@ -517,6 +517,7 @@ export default function DocumentAIPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="whitespace-pre-wrap text-sm leading-7 text-navy">{highlightImportantText(answer.answer)}</p>
+              {answer.language_notice && <p className="rounded-card bg-amber-50 p-2 text-xs text-amber-800">{answer.language_notice}</p>}
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
                 <div className="flex flex-wrap gap-4 text-xs text-ink/55">
                   <span className="flex items-center gap-1.5"><ShieldCheck size={14} /> Faithfulness: {answer.faithfulness_score === null ? "N/A" : `${Math.round(answer.faithfulness_score * 100)}%`}</span>
