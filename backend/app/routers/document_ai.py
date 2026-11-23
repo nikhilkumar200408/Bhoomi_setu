@@ -15,6 +15,7 @@ from ..services.docai import facts as F
 from ..services.docai import qa
 from ..services.docai.errors import DocAIError
 from ..services.docai.text import extract_pages
+from ..services.docai.structure import build_document_structure
 from ..services.docai.ollama import OllamaError, generate_evidence_draft
 
 router = APIRouter(prefix="/api/document-ai", tags=["document-ai"])
@@ -59,7 +60,7 @@ def _job_out(j: dict) -> dict:
     return {"job_id": j["_id"], "document_id": j["document_id"], "status": j["status"],
             "pages_total": j.get("pages_total"), "pages_processed": j.get("pages_processed", 0),
             "chunks_created": j.get("chunks_created", 0), "error": j.get("error"),
-            "created_at": _iso(j["created_at"]), "completed_at": _iso(j["completed_at"]) if j.get("completed_at") else None}
+            "created_at": _iso(j["created_at"]), "completed_at": _iso(j["completed_at"]) if j.get("completed_at") else None,\n            "structure": j.get("structure")}
 
 
 async def _run_index(job_id: str, document: dict) -> None:
@@ -69,6 +70,7 @@ async def _run_index(job_id: str, document: dict) -> None:
         pages = await run_in_threadpool(extract_pages, document["stored_path"])
         if not any(p["text"] for p in pages):
             raise DocAIError(422, "UNPROCESSABLE_DOCUMENT", "No readable text could be extracted from this document.")
+        structure = await run_in_threadpool(build_document_structure, pages)
         await docai_pages_collection.delete_many({"document_id": document["_id"]})
         chunks = 0
         for p in pages:
@@ -77,7 +79,7 @@ async def _run_index(job_id: str, document: dict) -> None:
             chunks += len(qa.build_chunks([{**p, "document_id": document["_id"], "filename": document["filename"]}]))
         await docai_jobs_collection.update_one({"_id": job_id}, {"$set": {
             "status": "COMPLETED", "pages_total": len(pages), "pages_processed": len(pages),
-            "chunks_created": chunks, "completed_at": models.utcnow()}})
+            "chunks_created": chunks, "structure": structure, "completed_at": models.utcnow()}})
         await documents_collection.update_one({"_id": document["_id"]}, {"$set": {"docai_status": "INDEXED"}})
     except DocAIError as e:
         err = {"code": e.code, "message": e.message}
