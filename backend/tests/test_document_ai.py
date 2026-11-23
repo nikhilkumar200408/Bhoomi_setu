@@ -228,10 +228,23 @@ def test_amendment_cycles_are_flagged():
 
 
 # ------------------------------------------------------------------ scoring / quote checks / review
-def test_faithfulness_formula_and_quote_verification():
-    claims = [{"status": s} for s in ("SUPPORTED", "PARTIALLY_SUPPORTED", "CONTRADICTED", "INSUFFICIENT_EVIDENCE")]
-    assert qa.faithfulness(claims) == 0.25
-    assert qa.faithfulness([]) is None
+def test_faithfulness_uses_verified_source_quotes_not_retrieval_status():
+    claims = [
+        {"status": "SUPPORTED", "text": "The annual rate is 8%.", "evidence_ids": ["ev1"]},
+        {"status": "PARTIALLY_SUPPORTED", "text": "The principal is INR 100,000.", "evidence_ids": ["ev2"]},
+        {"status": "CONTRADICTED", "text": "The fee is 2%.", "evidence_ids": ["ev3"]},
+        {"status": "INSUFFICIENT_EVIDENCE", "text": "Unsupported claim", "evidence_ids": ["ev4"]},
+    ]
+    evidence = [
+        {"evidence_id": "ev1", "quote": "The annual rate is 8%.", "verification": {"quote_found_in_source": True}},
+        {"evidence_id": "ev2", "quote": "The principal is INR 100,000.", "verification": {"quote_found_in_source": True}},
+        {"evidence_id": "ev3", "quote": "The fee is 2%.", "verification": {"quote_found_in_source": True}},
+        {"evidence_id": "ev4", "quote": "Different source text.", "verification": {"quote_found_in_source": True}},
+    ]
+    assert qa.faithfulness(claims, evidence) == 0.75
+    evidence[1]["verification"]["quote_found_in_source"] = False
+    assert qa.faithfulness(claims, evidence) == 0.5
+    assert qa.faithfulness([], evidence) is None
     assert F.verify_quote("a b c", "a  b") == (0, 3) and F.verify_quote("abc", "abd") is None
 
 
