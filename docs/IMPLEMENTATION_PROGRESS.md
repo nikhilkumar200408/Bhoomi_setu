@@ -1,6 +1,6 @@
 # Implementation progress
 
-Status key: Done, Partial, Not started, Not verified. Updated 2026-11-23 after reviewing the current `dev` source.
+Status key: Done, Partial, Not started, Not verified. Updated 2026-11-23 after the first Universal Ingestion Engine implementation.
 
 ## Existing platform workflows (separate from domain-independent Document AI)
 
@@ -8,7 +8,7 @@ Status key: Done, Partial, Not started, Not verified. Updated 2026-11-23 after r
 |---|---|---|
 | Auth (JWT, password hashing, roles) | Done in code | Regression tests still required after Document AI changes |
 | Upload and batch upload | Done in code | Validate size/type and ownership in tests |
-| OCR and extraction pipeline | Done in code | Scanned-PDF path and Indic language data need explicit verification |
+| OCR and extraction pipeline | Done in code | Existing workflow preserved; scanned-PDF path and Indic language data need explicit verification |
 | Records, verification/signature, audit, dashboard, search | Done in code | Preserve existing behavior |
 | Existing frontend | Done in code | Prior handoff reports three lint warnings; re-run lint/build before release |
 
@@ -16,7 +16,10 @@ Status key: Done, Partial, Not started, Not verified. Updated 2026-11-23 after r
 
 | Area | Status | Notes |
 |---|---|---|
-| PDF text extraction/OCR indexing jobs | Partial | Implemented; scanned PDF and table quality not fully verified |
+| Universal page extraction foundation | Partial | Native PDF text plus layout blocks and PDF-point bounding boxes; low-text pages fall back to Tesseract OCR with line boxes and confidence metadata |
+| Table extraction | Partial | Native PDF table detection is attempted through PyMuPDF when supported; OCR table reconstruction remains pending and all table results need fixtures |
+| Multi-page documents | Partial | Page boundaries and provenance retained; cross-page clause/section reconstruction is not yet implemented |
+| Extraction quality metadata | Partial | Text/OCR method, character/word counts, OCR confidence, quality flags and warnings are stored with indexed pages; confidence is not a truth score |
 | BM25 lexical retrieval | Done in code | No dense vectors yet |
 | Cross-document Q&A | Partial | Extractive source passages, not LLM-generated answers |
 | Page citations and quote verification | Done in code | Quotes are checked against stored page text |
@@ -26,9 +29,8 @@ Status key: Done, Partial, Not started, Not verified. Updated 2026-11-23 after r
 | Amendment tracking | Partial | Basic explicit-cue/base-reference/effective-date rules |
 | Human review | Done in code | Revenue Officer only; source evidence remains unchanged |
 | Document AI frontend | Not started | Must use the documented API contract |
-| Local Ollama LLM | Partial | Optional local Llama 3.2 draft integration added; output is marked unverified and cannot replace evidence-backed answers. Runtime and regression tests pending |
+| Local Ollama LLM | Partial | Optional local Llama 3.2 draft integration added; output is marked unverified and cannot replace evidence-backed answers |
 | BGE-M3 embeddings / vector retrieval | Not started | Requires storage design, indexing and evaluation |
-| Semantic clause comparison | Not started | Do not label lexical/rule-based matches as semantic AI |
 
 ## Access control
 
@@ -42,37 +44,37 @@ Status key: Done, Partial, Not started, Not verified. Updated 2026-11-23 after r
 
 | Item | Status | Notes |
 |---|---|---|
-| Docker Compose and frontend/backend configuration | Present in repository | Prior handoff reported config validation; rebuild/retest before release |
-| Runtime/dev Python requirements split | Present in repository | Recheck dependency installation in clean environment |
+| Docker Compose and frontend/backend configuration | Present in repository | Rebuild/retest before release |
+| Runtime/dev Python requirements split | Present in repository | Development dependencies live in requirements-dev.txt |
 | API contract | Present | Keep synchronized with actual implementation |
 | Session handoff | Corrected | Historical patch instructions removed |
-| Project state | Corrected | Branch/history references must match live repository |
+| Project state | Corrected | Domain-independent scope documented |
 | README cleanup | Not verified | Do not mark complete without reviewing requested sections |
-| Secret rotation | Outstanding | A previously committed Fast2SMS key was reported; rotate it and remove active use. History cleanup requires separate careful review. |
+| Secret rotation | Outstanding | Rotate any previously committed credentials still active; never copy secrets into tracked files |
 
 ## Test evidence and limitations
 
-The previous handoff recorded a backend test run of 28 passed and 1 deselected under Python 3.12 with English Tesseract data, but this result has not been re-run in the current implementation session. Treat it as historical evidence only.
+Current user-reported focused test run on 2026-11-23: `15 passed` for `tests/test_docai_ollama.py` and `tests/test_document_ai.py`. This run predates the Universal Ingestion Engine changes below.
 
-Not yet verified in the current session:
-- Backend full test suite and regression suite.
-- Scanned-PDF OCR with a representative scan.
-- Table extraction accuracy.
+Still not verified:
+- New ingestion tests and full backend suite after these changes.
+- Representative scanned-PDF OCR and extraction quality.
+- Table extraction accuracy on native and scanned PDFs.
 - Hindi/Marathi/Kannada OCR and question answering.
-- Frontend lint/build for the current branch.
-- Docker image build and full compose round trip.
-- Ollama model loading, inference latency, and memory use.
-- Dense embedding persistence and hybrid retrieval quality.
-- End-to-end Document AI user workflow.
+- Frontend lint/build.
+- Docker build and full compose round trip.
+- Ollama inference latency and memory use.
+- Dense embedding retrieval quality.
+- End-to-end multi-domain Document AI workflow.
 
 ## Next phases
 
-1. **Local LLM foundation — code added, runtime validation pending:** Ollama client, timeout handling, opt-in switch, Llama 3.2 selection, and safe unverified-draft response. Existing deterministic QA remains authoritative.
-2. **Universal document ingestion:** normalize varied PDF layouts, scanned pages, tables, and multi-page sections while retaining page-level source coordinates and extraction confidence.
-3. **BGE-M3 embeddings and hybrid retrieval:** combine lexical BM25 and vector retrieval; evaluate retrieval against multi-domain test packs.
-4. **Zero-guessing verification:** sentence/claim-level evidence mapping, exact quote verification, conservative abstention, and calibrated reporting (never label heuristic scores as truth probabilities).
+1. **Local LLM foundation:** optional Ollama client and safe unverified-draft response; source-backed QA remains authoritative. Focused tests passed before ingestion changes.
+2. **Universal document ingestion:** foundation implemented partially (native layout blocks, page coordinates, OCR line provenance, metadata and optional native table detection). Next: reliable table fixtures, multi-page clause reconstruction, scanned-table handling and evaluation on varied PDFs.
+3. **BGE-M3 embeddings and hybrid retrieval:** combine lexical BM25 and vector retrieval; evaluate against multi-domain test packs.
+4. **Zero-guessing verification:** sentence/claim-level evidence mapping, exact quote verification, conservative abstention, and calibrated reporting.
 5. **Document intelligence:** improve cross-document contradictions, amendment chains, effective dates, and current-version reasoning with multi-domain fixtures.
 6. **Document AI frontend:** independent upload/indexing, evidence viewer, Q&A, contradiction/amendment views, PDF passage highlighting, and review workflow.
 7. **Regression, security and end-to-end validation:** preserve existing platform workflows and test banking, insurance, contracts, policies, scanned PDFs, tables, and multilingual cases.
 
-Do not call the system "complete" or "production-ready" until the outstanding items above have been tested.
+Do not call the system "complete" or "production-ready" until outstanding items have been tested.
