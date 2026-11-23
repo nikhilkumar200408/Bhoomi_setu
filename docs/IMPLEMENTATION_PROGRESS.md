@@ -99,7 +99,7 @@ Do not call the system "complete" or "production-ready" until outstanding items 
 
 | Feature | Status | Notes |
 |---|---|---|
-| Faithfulness recalibration | Implemented in code | Score counts only fully SUPPORTED claims with verified quotes; partial, contradicted and unsupported claims remain in denominator. Citation integrity and answer coverage must be reported separately. |
+| Faithfulness recalibration | Implemented in code | Score counts only fully SUPPORTED claims with verified quotes; partial, contradicted, unsupported and manually corrected claims do not count. Separate question-term coverage metric avoids confusing groundedness with retrieval coverage. |
 | Reset visibility | Implemented in code | Always-visible Reset workspace action moved to the page header; manual viewport verification still required. |
 | Citation and important-point highlighting | Implemented in code | Source quotes and key terms/numbers receive amber highlighting in the answer and evidence panel. |
 | Analytics | Implemented in code | Claim-status distribution and evidence-per-document charts added alongside indexing and quality charts. |
