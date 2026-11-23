@@ -17,3 +17,9 @@ def test_plain_text_webpage_source_is_indexable(tmp_path):
     assert pages[0]["source_type"] == "WEB_TEXT"
     assert "processing fee is 1 percent" in pages[0]["text"]
     assert pages[0]["extraction_metadata"]["extraction_method"] == "WEBPAGE_TEXT"
+
+
+def test_web_import_rejects_local_network_destination():
+    from app.services.docai.web_source import _validate_destination
+    with pytest.raises(WebImportError, match="Private, local"):
+        _validate_destination("localhost")
