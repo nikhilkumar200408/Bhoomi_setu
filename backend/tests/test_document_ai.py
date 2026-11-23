@@ -248,6 +248,8 @@ def test_faithfulness_uses_verified_source_quotes_not_retrieval_status():
     assert qa.faithfulness(claims, evidence) == 0.25
     claims[1]["status"] = "SUPPORTED"
     assert qa.faithfulness(claims, evidence) == 0.25
+    claims[0]["correction"] = {"corrected_text": "Manual correction"}
+    assert qa.faithfulness(claims, evidence) == 0.0
     assert qa.faithfulness([], evidence) is None
     assert F.verify_quote("a b c", "a  b") == (0, 3) and F.verify_quote("abc", "abd") is None
 
