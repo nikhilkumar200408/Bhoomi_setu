@@ -549,3 +549,8 @@ Before merging the feature into `dev`, backend and frontend contributors must te
 - Backend and frontend changes that alter this contract must be coordinated in one reviewed pull request to `dev`.
 - Do not merge unimplemented/fake API responses as if they were real AI results.
 - This contract defines the target interface; it does not claim that these new endpoints already exist.
+
+
+### Hybrid retrieval metadata
+
+Q&A responses expose `retrieval_mode` as `BM25` or `HYBRID_BM25_VECTOR`. Indexing-job responses expose `vectors_created` and `retrieval_mode`. Vector retrieval is opt-in via `OLLAMA_EMBEDDINGS_ENABLED`; source quotes and page verification remain authoritative. Semantic-only matches are marked `PARTIALLY_SUPPORTED` and require human review.
