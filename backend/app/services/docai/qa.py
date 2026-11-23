@@ -42,7 +42,7 @@ def faithfulness(claims: List[dict], evidence: List[dict] | None = None):
         cited = [evidence_by_id.get(eid) for eid in claim.get("evidence_ids", [])]
         if not claim_text or not cited or any(item is None for item in cited):
             continue
-        if claim.get("status") == "SUPPORTED" and all(
+        if claim.get("status") == "SUPPORTED" and not claim.get("correction") and all(
             item.get("verification", {}).get("quote_found_in_source") is True
             and claim_text in " ".join(str(item.get("quote", "")).split()).casefold()
             for item in cited
