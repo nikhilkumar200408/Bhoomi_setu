@@ -14,15 +14,15 @@
 ## Current Document AI implementation (code-level snapshot)
 
 - Indexing jobs and PDF text/OCR extraction exist.
-- Retrieval is BM25 lexical ranking; dense embeddings and hybrid retrieval are not implemented.
-- Q&A is extractive: returned claims are source passages, not local-LLM-generated synthesis.
+- Retrieval combines BM25 with optional local Ollama embeddings (configured for BGE-M3) and reciprocal-rank fusion; lexical-only fallback remains available.
+- Q&A is evidence-first and extractive; optional local Ollama drafting is marked unverified and cannot replace claims, citations, abstention or faithfulness.
 - Page-level evidence and backend quote verification exist.
-- Abstention uses lexical key-term coverage heuristics; it is not a semantic guarantee.
+- Abstention uses adaptive lexical coverage heuristics; it is conservative but is not a semantic guarantee.
 - Faithfulness is a verified-claim ratio, not a calibrated probability of truth.
-- Contradiction detection is rule-based and currently focuses on numeric facts such as percentages, INR amounts, area and duration.
-- Amendment handling requires explicit amendment cues, a base-document reference and an effective date that has arrived; unresolved cases need human review.
+- Contradiction detection is rule-based and focuses on structured facts such as percentages, INR amounts, area and duration.
+- Amendment handling uses explicit amendment cues, base-document references and effective-date checks; unresolved cases need human review.
 - Claim review is restricted to Revenue Officers and audited.
-- A dedicated Document AI frontend, local LLM integration, BGE-M3 embeddings and semantic clause comparison remain future work.
+- The dedicated Document AI frontend supports upload/indexing, source selection, Q&A, citations, contradictions, amendments, and a financial calculator. PDF passage highlighting and a complete in-app review experience remain outstanding.
 
 See `docs/IMPLEMENTATION_PROGRESS.md` for the detailed status and unverified test matrix. Do not treat historical test output as a fresh test run.
 
@@ -49,4 +49,4 @@ See `docs/IMPLEMENTATION_PROGRESS.md` for the detailed status and unverified tes
 - Backend development baseline: Python 3.12; Tesseract and Poppler are used by document processing. Install development dependencies from `backend/requirements-dev.txt`.
 - OCR languages require the corresponding Tesseract traineddata files.
 - A previously committed Fast2SMS credential was reported in Git history. Rotate it immediately if still active; never copy secrets into tracked files. History rewriting is a separate coordinated operation.
-- Before release, run backend tests, frontend lint/build, Docker build/compose checks, and the documented end-to-end workflow. Record exact results.
+- Phase 9 CI now runs backend tests, frontend lint/build, and Docker Compose validation/image builds on dev/main pushes and pull requests. The manual end-to-end checklist remains required; record exact results before release.
