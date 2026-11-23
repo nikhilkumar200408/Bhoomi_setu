@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   AlertTriangle, BrainCircuit, Calculator, CheckCircle2, FileSearch, GitBranch,
   Loader2, RefreshCw, RotateCcw, Send, ShieldCheck, Sparkles, UploadCloud,
@@ -38,6 +38,15 @@ type PageResult<T> = { items: T[]; next_cursor?: string | null };
 type CalculationResult = { formula: string; working: string; notice: string; calculation_type: string; result: Record<string, number> };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function highlightImportantText(value: string) {
+  const parts = value.split(/(interest rate|processing fee|overdue charges?|repayment|maturity|effective date|penalty|eligibility|sanction|₹\\s?[\\d,]+|\\b\\d+(?:\\.\\d+)?\\s?%|\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}\\b)/gi);
+  return parts.map((part, index) =>
+    /^(interest rate|processing fee|overdue charges?|repayment|maturity|effective date|penalty|eligibility|sanction|₹\\s?[\\d,]+|\\b\\d+(?:\\.\\d+)?\\s?%|\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}\\b)$/i.test(part)
+      ? <mark key={index} className="rounded bg-amber-100 px-1 text-amber-950">{part}</mark>
+      : <span key={index}>{part}</span>
+  );
+}
 
 export default function DocumentAIPage() {
   const [documents, setDocuments] = useState<Doc[]>([]);
@@ -252,9 +261,15 @@ export default function DocumentAIPage() {
             Answers stay tied to page-level source evidence.
           </p>
         </div>
-        <Button variant="secondary" onClick={refreshWorkspace} disabled={indexing || asking || uploading || refreshing}>
-          <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} /> {refreshing ? "Refreshing…" : "Refresh"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="secondary" onClick={resetWorkspace}
+            disabled={asking || indexing || uploading || refreshing}>
+            <RotateCcw size={14} /> Reset workspace
+          </Button>
+          <Button variant="secondary" onClick={refreshWorkspace} disabled={indexing || asking || uploading || refreshing}>
+            <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} /> {refreshing ? "Refreshing…" : "Refresh"}
+          </Button>
+        </div>
       </div>
 
       {error && <ErrorState message={error} />}
@@ -344,10 +359,6 @@ export default function DocumentAIPage() {
                   <span className="text-xs text-ink/45">Up to 2,000 characters</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button type="button" variant="secondary" onClick={resetWorkspace}
-                    disabled={asking || indexing || uploading || refreshing || (!selected.length && !question && !answer && !conflicts.length && !amendments.length && !error && !indexMessage && !calculation)}>
-                    <RotateCcw size={14} /> Reset
-                  </Button>
                   <Button type="submit" disabled={!question.trim() || !selected.length || indexedCount !== selected.length || asking}>
                     {asking ? <><Loader2 size={14} className="animate-spin" /> Searching evidence…</> : <><Send size={14} /> Ask documents</>}
                   </Button>
@@ -418,6 +429,45 @@ export default function DocumentAIPage() {
         </CardContent></Card>
       </div>
 
+      <div className="grid gap-5 xl:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle>Claim status distribution</CardTitle></CardHeader>
+          <CardContent>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={[
+                    {name:"Supported", value:answer?.claims.filter(c=>c.status==="SUPPORTED").length ?? 0},
+                    {name:"Partial", value:answer?.claims.filter(c=>c.status==="PARTIALLY_SUPPORTED").length ?? 0},
+                    {name:"Contradicted / review", value:answer?.claims.filter(c=>c.status!=="SUPPORTED" && c.status!=="PARTIALLY_SUPPORTED").length ?? 0},
+                  ].filter(x=>x.value>0)} dataKey="value" nameKey="name" outerRadius={88} label>
+                    <Cell fill="#0f766e" /><Cell fill="#d97706" /><Cell fill="#dc2626" />
+                  </Pie>
+                  <Tooltip /><Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            {!answer && <p className="text-xs text-ink/45">Ask a question to populate claim status analytics.</p>}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>Evidence by source document</CardTitle></CardHeader>
+          <CardContent>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={Object.entries((answer?.evidence ?? []).reduce<Record<string, number>>((acc, item) => {
+                  acc[item.filename] = (acc[item.filename] || 0) + 1; return acc;
+                }, {})).map(([name,count])=>({name:name.length>18 ? name.slice(0,18)+"…" : name,count}))}>
+                  <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis allowDecimals={false} /><Tooltip />
+                  <Bar dataKey="count" fill="#7c3aed" radius={[6,6,0,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            {!answer && <p className="text-xs text-ink/45">Ask a question to see which documents supplied evidence.</p>}
+          </CardContent>
+        </Card>
+      </div>
+
       {answer && (
         <div className="space-y-5">
           <Card>
@@ -428,7 +478,7 @@ export default function DocumentAIPage() {
               </span>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="whitespace-pre-wrap text-sm leading-7 text-navy">{answer.answer}</p>
+              <p className="whitespace-pre-wrap text-sm leading-7 text-navy">{highlightImportantText(answer.answer)}</p>
               <div className="flex flex-wrap gap-4 border-t border-line pt-3 text-xs text-ink/55">
                 <span className="flex items-center gap-1.5"><ShieldCheck size={14} /> Faithfulness: {answer.faithfulness_score === null ? "N/A" : `${Math.round(answer.faithfulness_score * 100)}%`}</span>
                 <span>{answer.claims.length} claims checked</span>
@@ -445,7 +495,7 @@ export default function DocumentAIPage() {
                 {answer.llm_assistance.draft && (
                   <div className="rounded-card border border-review/30 bg-review-bg/40 p-3">
                     <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-review">LLM summary draft — verify against the cited source passages</p>
-                    <p className="whitespace-pre-wrap text-sm text-navy">{answer.llm_assistance.draft}</p>
+                    <p className="text-sm text-navy">{answer.llm_assistance.draft.split(/[.!?।]\\s/)[0].trim()}{answer.llm_assistance.draft.length > 180 ? "…" : ""}</p>
                     <p className="mt-2 text-xs text-ink/55">{answer.llm_assistance.notice}</p>
                   </div>
                 )}
@@ -464,7 +514,7 @@ export default function DocumentAIPage() {
                       <span className="font-semibold text-navy">{item.filename}</span>
                       <span className="text-ink/50">Page {item.page_number}</span>
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-ink/75">“{item.quote}”</p>
+                    <p className="mt-2 rounded-md bg-amber-50 px-2 py-2 text-sm leading-6 text-amber-950">“{highlightImportantText(item.quote)}”</p>
                     <p className="mt-2 flex items-center gap-1 text-[11px] text-verified">
                       <CheckCircle2 size={12} /> {item.verification?.quote_found_in_source ? "Quote verified against source page" : "Source quote attached"}
                     </p>
@@ -483,7 +533,7 @@ export default function DocumentAIPage() {
                       <span className="text-xs font-semibold text-navy">{claim.status.replaceAll("_", " ")}</span>
                       <span className="text-xs text-ink/45">{Math.round(claim.confidence * 100)}% term coverage</span>
                     </div>
-                    <p className="mt-2 text-sm text-ink/75">{claim.text}</p>
+                    <p className="mt-2 text-sm text-ink/75">{highlightImportantText(claim.text)}</p>
                     {claim.explanation && <p className="mt-1 text-xs text-ink/50">{claim.explanation}</p>}
                   </div>
                 ))}
