@@ -93,3 +93,20 @@ Do not call the system "complete" or "production-ready" until outstanding items 
   test/build run, manual reset interaction, representative real-document
   validation, and a secured non-demo deployment. Do not mark Phase 9 complete
   until those checks pass and evidence is recorded.
+
+
+## Phase 10 — evidence review, explainability and source expansion (2026-11-23)
+
+| Feature | Status | Notes |
+|---|---|---|
+| Faithfulness recalibration | Implemented in code | Score counts only fully SUPPORTED claims with verified quotes; partial, contradicted and unsupported claims remain in denominator. Citation integrity and answer coverage must be reported separately. |
+| Reset visibility | Implemented in code | Always-visible Reset workspace action moved to the page header; manual viewport verification still required. |
+| Citation and important-point highlighting | Implemented in code | Source quotes and key terms/numbers receive amber highlighting in the answer and evidence panel. |
+| Analytics | Implemented in code | Claim-status distribution and evidence-per-document charts added alongside indexing and quality charts. |
+| LLM one-line summary | Implemented in UI | Model draft is presented as a concise first-sentence summary and remains explicitly unverified. |
+| Human audit and correction | Planned | Add privileged review correction endpoint, immutable original claim/evidence, reasoned correction history and audit trail. |
+| Hindi query support | Planned | Add local query translation/retrieval and test Hindi source OCR; no cloud translation APIs. |
+| Public web-page ingestion | Planned | Add URL import with SSRF protections, robots/terms safeguards, source URL/date provenance and HTML-to-text extraction. |
+| PDF source highlight | Planned | Link citations to page viewer with exact text-span highlighting. |
+
+Do not report Phase 10 complete until backend tests, frontend lint/build, security tests, and manual Hindi/reset/citation workflows pass.
