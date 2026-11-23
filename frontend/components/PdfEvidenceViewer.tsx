@@ -10,13 +10,6 @@ type PdfEvidenceViewerProps = {
   quote: string;
 };
 
-type TextItem = {
-  str: string;
-  transform: number[];
-  width: number;
-  height: number;
-};
-
 export default function PdfEvidenceViewer({ documentId, pageNumber, quote }: PdfEvidenceViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -55,7 +48,7 @@ export default function PdfEvidenceViewer({ documentId, pageNumber, quote }: Pdf
       setMatchFound(false);
       try {
         const pdfjs = await import("pdfjs-dist");
-        pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+        pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
         const pdf = await pdfjs.getDocument(blobUrl).promise;
         const page = await pdf.getPage(pageNumber);
         const viewport = page.getViewport({ scale: 1.35 * zoom });
@@ -65,9 +58,9 @@ export default function PdfEvidenceViewer({ documentId, pageNumber, quote }: Pdf
         if (!context) throw new Error("Canvas rendering is unavailable.");
         canvas.width = Math.ceil(viewport.width);
         canvas.height = Math.ceil(viewport.height);
-        await page.render({ canvasContext: context, viewport, canvas }).promise;
+        await page.render({ canvasContext: context, viewport }).promise;
         const textContent = await page.getTextContent();
-        const items = textContent.items.filter((item): item is TextItem => "str" in item && "transform" in item);
+        const items = textContent.items.filter((item) => "str" in item && "transform" in item);
         const normalize = (value: string) => value.toLocaleLowerCase().replace(/\s+/g, " ").trim();
         const pageText = items.map((item) => item.str).join(" ");
         const normalizedPage = normalize(pageText);
