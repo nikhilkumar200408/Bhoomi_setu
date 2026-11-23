@@ -284,7 +284,7 @@ export default function ChatPage() {
 
       <aside className="hidden min-h-[680px] flex-col border-l border-slate-200 bg-[#fbfcfe] xl:flex">
         <div className="border-b border-slate-200 px-4 py-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-[#142744]"><FileSearch size={16} className="text-[#315b88}"/> Sources & context</div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-[#142744]"><FileSearch size={16} className="text-[#315b88]"/> Sources & context</div>
           <p className="mt-1 text-[11px] leading-5 text-slate-500">Evidence retrieved for your latest answer.</p>
         </div>
         <div className="flex-1 space-y-5 overflow-y-auto p-4">
