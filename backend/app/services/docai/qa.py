@@ -10,7 +10,7 @@ from .embeddings import reciprocal_rank_fusion
 MIN_COVERAGE = 0.5      # upper bound; long multi-part questions use an adaptive threshold
 PARTIAL_BELOW = 0.8     # coverage below this -> PARTIALLY_SUPPORTED
 MAX_CLAIMS = 5
-FAITHFULNESS_METHOD = "verified_claim_ratio"
+FAITHFULNESS_METHOD = "verified_supported_claim_ratio"
 
 
 def _now() -> str:
@@ -26,11 +26,12 @@ def build_chunks(pages: List[dict]) -> List[dict]:
 
 
 def faithfulness(claims: List[dict], evidence: List[dict] | None = None):
-    """Share of answer claims that are directly grounded in verified source quotations.
+    """Share of claims that are both fully supported and backed by verified source quotes.
 
-    Retrieval relevance (SUPPORTED/PARTIALLY_SUPPORTED) is deliberately not used here:
-    a passage can be an exact, verified source quote while matching only part of a long
-    question. Every cited quote must exist on its source page and contain the claim text.
+    A quote existing in a source is citation integrity, not proof that it answers the
+    question. Partial, contradicted, and insufficient-evidence claims stay in the
+    denominator but do not increase the score. This prevents extractive quotes from
+    producing a misleading 100% score when they only partially answer a question.
     """
     if not claims:
         return None
@@ -41,7 +42,7 @@ def faithfulness(claims: List[dict], evidence: List[dict] | None = None):
         cited = [evidence_by_id.get(eid) for eid in claim.get("evidence_ids", [])]
         if not claim_text or not cited or any(item is None for item in cited):
             continue
-        if all(
+        if claim.get("status") == "SUPPORTED" and all(
             item.get("verification", {}).get("quote_found_in_source") is True
             and claim_text in " ".join(str(item.get("quote", "")).split()).casefold()
             for item in cited
