@@ -20,7 +20,7 @@ Status key: Done, Partial, Not started, Not verified. Updated 2026-11-23 after t
 | Table extraction | Partial | Native PDF table detection plus conservative adjacent-page table continuation when exact non-empty headers match; OCR table reconstruction and real-document fixtures remain pending |
 | Multi-page documents | Partial | Clause-like sections are grouped across pages with page-level source spans; grouping is heuristic and does not rewrite source-page text |
 | Extraction quality metadata | Partial | Text/OCR method, character/word counts, OCR confidence, quality flags and warnings are stored with indexed pages; confidence is not a truth score |
-| BM25 lexical retrieval | Done in code | No dense vectors yet |
+| BM25 lexical retrieval | Done in code | Kept as a first retrieval channel in hybrid mode |
 | Cross-document Q&A | Partial | Extractive source passages, not LLM-generated answers |
 | Page citations and quote verification | Done in code | Quotes are checked against stored page text |
 | Abstention | Partial | Lexical key-term coverage heuristic; requires evaluation |
@@ -30,7 +30,7 @@ Status key: Done, Partial, Not started, Not verified. Updated 2026-11-23 after t
 | Human review | Done in code | Revenue Officer only; source evidence remains unchanged |
 | Document AI frontend | Not started | Must use the documented API contract |
 | Local Ollama LLM | Partial | Optional local Llama 3.2 draft integration added; output is marked unverified and cannot replace evidence-backed answers |
-| BGE-M3 embeddings / vector retrieval | Not started | Requires storage design, indexing and evaluation |
+| BGE-M3 embeddings / vector retrieval | Partial | Opt-in Ollama embeddings, MongoDB chunk-vector storage, batch indexing, query embeddings, cosine ranking and RRF fusion implemented. Semantic-only matches are downgraded to PARTIALLY_SUPPORTED and require human review. Real-model evaluation and threshold tuning remain |
 
 ## Access control
 
@@ -54,7 +54,7 @@ Status key: Done, Partial, Not started, Not verified. Updated 2026-11-23 after t
 
 ## Test evidence and limitations
 
-Current user-reported focused test run on 2026-11-23: `15 passed` for `tests/test_docai_ollama.py` and `tests/test_document_ai.py`. This run predates the Universal Ingestion Engine changes below.
+Current user-reported focused test run on 2026-11-23: `9 passed` for `tests/test_docai_embeddings.py` and `tests/test_docai_ollama.py`. Hybrid retrieval integration has been committed but awaits local regression tests.
 
 Still not verified:
 - New ingestion tests and full backend suite after these changes.
@@ -71,7 +71,7 @@ Still not verified:
 
 1. **Local LLM foundation:** optional Ollama client and safe unverified-draft response; source-backed QA remains authoritative. Focused tests passed before ingestion changes.
 2. **Universal document ingestion:** foundation implemented partially (native layout blocks, page coordinates, OCR line provenance, metadata and optional native table detection). Next: OCR table reconstruction, table/section evaluation on representative banking, insurance and contract PDFs, and stronger reading-order validation.
-3. **BGE-M3 embeddings and hybrid retrieval:** combine lexical BM25 and vector retrieval; evaluate against multi-domain test packs.
+3. **BGE-M3 embeddings and hybrid retrieval:** initial opt-in BM25 + vector pipeline is implemented; next install the local BGE-M3 model, run end-to-end indexing/Q&A tests, benchmark retrieval quality and tune thresholds.
 4. **Zero-guessing verification:** sentence/claim-level evidence mapping, exact quote verification, conservative abstention, and calibrated reporting.
 5. **Document intelligence:** improve cross-document contradictions, amendment chains, effective dates, and current-version reasoning with multi-domain fixtures.
 6. **Document AI frontend:** independent upload/indexing, evidence viewer, Q&A, contradiction/amendment views, PDF passage highlighting, and review workflow.
