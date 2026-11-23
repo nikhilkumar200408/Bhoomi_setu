@@ -169,22 +169,41 @@ async def create_checklist(payload: ChecklistCreate, user: dict = Depends(get_cu
                     partial.append(_page_evidence(page, _snippet(text, words[0] if words else "")))
                     break
         status = "FOUND" if exact else "NEEDS_VERIFICATION" if partial else "MISSING"
+        # For a missing requirement, retain actual pages that were searched.
+        # These excerpts document the review scope; they do not prove absence.
         evidence = exact[:5] if exact else partial[:5]
+        if not evidence:
+            evidence = [
+                _page_evidence(page, _clean(page.get("text", ""))[:500])
+                for page in pages[:3] if _clean(page.get("text", ""))
+            ]
         results.append({
             "id": _id(), "label": requirement.label, "keywords": requirement.keywords,
             "status": status, "evidence": evidence,
             "message": (
                 "Matching source text found." if exact else
                 "Related wording found; reviewer confirmation is required." if partial else
-                "No matching wording was found in the selected indexed documents."
+                "No matching wording was found in the selected indexed documents; sampled pages show the search scope."
             )
         })
+    checklist_id = _id()
     record = {
-        "_id": _id(), "user_id": user["_id"], "name": payload.name,
+        "_id": checklist_id, "user_id": user["_id"], "name": payload.name,
         "document_ids": ids, "document_names": [d.get("filename", "Document") for d in docs],
         "requirements": results, "created_at": _now(), "updated_at": _now()
     }
     await compliance_checklists_collection.insert_one(record)
+    # Exceptions enter the human review queue with their searched source pages.
+    for item in results:
+        if item["status"] != "FOUND" and item["evidence"]:
+            await compliance_reviews_collection.insert_one({
+                "_id": _id(), "user_id": user["_id"],
+                "title": "Checklist exception: " + item["label"],
+                "description": item["message"], "source_type": "CHECKLIST",
+                "source_id": checklist_id, "document_ids": ids,
+                "evidence": item["evidence"], "status": "PENDING",
+                "history": [], "created_at": _now(), "updated_at": _now()
+            })
     return record
 
 
@@ -327,6 +346,10 @@ async def run_rule(rule_id: str, payload: RuleRunRequest, user: dict = Depends(g
             evidence_page = doc_pages[0] if doc_pages else None
         status = "PASS" if passed else "FAIL"
         evidence = []
+        if evidence_page is None and not passed and doc_pages:
+            # A failed presence rule is supported by the page(s) inspected,
+            # even though the missing phrase itself cannot be quoted.
+            evidence_page = doc_pages[0]
         if evidence_page:
             quote = _snippet(evidence_page.get("text", ""), expected if op in {"contains", "not_contains", "regex"} else "")
             evidence = [_page_evidence(evidence_page, quote or "Page-count check; inspect indexed source page.")]
