@@ -244,3 +244,27 @@ async def test_invalid_upload_and_pagination_errors(client):
     assert (await client.get(f"/api/document-ai/contradictions?document_ids={doc}&limit=0", headers=a)).status_code == 400
     assert (await client.get(f"/api/document-ai/contradictions?document_ids={doc}&status=BAD", headers=a)).status_code == 400
     assert (await client.get("/api/document-ai/contradictions", headers=a)).status_code == 422
+
+
+def test_semantic_only_retrieval_is_never_auto_supported():
+    page = {
+        "document_id": "doc-semantic",
+        "filename": "loan_terms.pdf",
+        "page": 3,
+        "source_type": "PDF_TEXT",
+        "text": "Interest is charged at eight percent per annum.",
+    }
+    chunk = qa.build_chunks([page])[0]
+    key = (page["document_id"], page["page"], chunk["start"], chunk["end"])
+    result = qa.answer_question(
+        "interest rate amount percentage",
+        [page],
+        ["doc-semantic"],
+        vector_scores={key: 0.91},
+    )
+    assert result["retrieval_mode"] == "HYBRID_BM25_VECTOR"
+    assert not result["abstained"]
+    assert result["claims"][0]["status"] == "PARTIALLY_SUPPORTED"
+    assert result["claims"][0]["requires_human_review"] is True
+    assert result["evidence"][0]["page_number"] == 3
+    assert result["evidence"][0]["verification"]["quote_found_in_source"] is True
