@@ -193,6 +193,12 @@ export default function DocumentAIPage() {
     setError(null);
     setIndexMessage("");
     setCalculation(null);
+    setWebUrl("");
+    setEditingClaimId(null);
+    setCorrectionText("");
+    setCorrectionReason("");
+    setAuditEvents([]);
+    setAuditOpen(false);
   }
 
   async function indexSelected() {
@@ -321,7 +327,7 @@ export default function DocumentAIPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button type="button" variant="secondary" onClick={resetWorkspace}
-            disabled={asking || indexing || uploading || refreshing}>
+            disabled={asking || indexing || uploading || importingWeb || refreshing}>
             <RotateCcw size={14} /> Reset workspace
           </Button>
           <Button variant="secondary" onClick={refreshWorkspace} disabled={indexing || asking || uploading || refreshing}>
