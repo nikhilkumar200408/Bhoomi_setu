@@ -14,6 +14,7 @@ from typing import Dict, List, Optional
 
 from .nlp import sentence_spans
 from .date_conflicts import detect_date_conflicts
+from .rule_conflicts import detect_rule_conflicts
 
 TOPICS = ["interest", "penalty", "fee", "rent", "price", "consideration", "tax", "duty", "deposit",
           "premium", "tenure", "period", "area", "rate", "amount"]
@@ -231,6 +232,7 @@ def analyse(pages: List[dict], today: Optional[date] = None) -> dict:
                         "relationship_confidence": None,
                         "requires_human_review": st == "REVIEW_REQUIRED", "_doc_ids": [bs["document_id"], am["document_id"]]})
     contradictions.extend(detect_date_conflicts(pages, now))
+    contradictions.extend(detect_rule_conflicts(pages, now))
     _flag_cycles(amendments)
     _annotate_amendment_chains(amendments)
     return {"contradictions": contradictions, "amendments": amendments}
