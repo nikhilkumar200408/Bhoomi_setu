@@ -577,7 +577,7 @@ export default function DocumentAIPage() {
                     <div key={index} className="border-t border-line py-2 text-xs">
                       <strong>{event.action}</strong> · {new Date(event.timestamp).toLocaleString()}
                       {event.new_value && <p className="mt-1 text-ink/60">Updated to: {event.new_value}</p>}
-                      {event.metadata?.reason && <p className="text-ink/60">Reason: {String(event.metadata.reason)}</p>}
+                      {String(event.metadata?.reason ?? "").length > 0 && <p className="text-ink/60">Reason: {String(event.metadata?.reason)}</p>}
                     </div>
                   )) : <p className="text-xs text-ink/50">No review or correction events recorded for this answer.</p>}
                 </div>
@@ -634,7 +634,7 @@ export default function DocumentAIPage() {
                     </div>
                     <p className="mt-2 text-sm text-ink/75">{highlightImportantText(claim.correction?.corrected_text || claim.text)}</p>
                     {claim.correction && <p className="mt-1 text-xs font-medium text-amber-700">Reviewer-corrected · {claim.correction.reason}</p>}
-                    {claim.explanation && <p className="mt-1 text-xs text-ink/50">{claim.explanation}</p>
+                    {claim.explanation && <p className="mt-1 text-xs text-ink/50">{claim.explanation}</p>}
                     {editingClaimId === claim.claim_id ? (
                       <div className="mt-3 space-y-2 rounded-card bg-slate-50 p-3">
                         <label className="block text-xs font-medium text-navy">Corrected statement
