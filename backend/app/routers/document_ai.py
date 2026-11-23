@@ -394,6 +394,7 @@ async def correct_claim(claim_id: str, payload: CorrectClaimRequest, user: dict 
         "corrected_at": _iso(),
     }
     claim["correction"] = correction
+    a["faithfulness_score"] = qa.faithfulness(a.get("claims", []), a.get("evidence", []))
     await docai_answers_collection.replace_one({"_id": a["_id"]}, a)
     await log_audit(
         action="DOCAI_CLAIM_CORRECTION", user_id=user["_id"],
