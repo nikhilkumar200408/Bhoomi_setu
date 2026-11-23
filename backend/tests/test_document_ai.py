@@ -271,6 +271,28 @@ async def test_human_review_requires_officer_reason_and_keeps_evidence(client):
 
 
 @pytest.mark.asyncio
+async def test_reviewer_can_correct_claim_without_mutating_original_evidence(client):
+    a, officer = await hdr(client, "op_a"), await hdr(client, "officer")
+    doc = await upload_pdf(client, a, "loan_agreement.pdf", BASE)
+    await index(client, a, doc)
+    body = (await ask(client, a, "interest rate", [doc])).json()
+    claim = body["claims"][0]
+    before_evidence = body["evidence"]
+    url = f"/api/document-ai/claims/{claim['claim_id']}/correct"
+    denied = await client.post(url, json={"corrected_text": "Corrected rate is 8 percent.", "reason": "Reviewed original clause."}, headers=a)
+    assert denied.status_code == 403
+    saved = await client.post(url, json={"corrected_text": "Reviewed rate: 8 percent per annum.", "reason": "Corrected wording after manual clause review."}, headers=officer)
+    assert saved.status_code == 200 and saved.json()["source_evidence_unchanged"] is True
+    after = (await client.get(f"/api/document-ai/answers/{body['answer_id']}", headers=officer)).json()
+    assert after["claims"][0]["text"] == claim["text"]
+    assert after["claims"][0]["correction"]["corrected_text"] == "Reviewed rate: 8 percent per annum."
+    assert after["evidence"] == before_evidence
+    history = await client.get(f"/api/document-ai/answers/{body['answer_id']}/audit", headers=officer)
+    assert history.status_code == 200
+    assert any(item["action"] == "DOCAI_CLAIM_CORRECTION" for item in history.json()["items"])
+
+
+@pytest.mark.asyncio
 async def test_invalid_upload_and_pagination_errors(client):
     a = await hdr(client, "op_a")
     r = await client.post("/api/documents/upload", files={"file": ("evil.exe", b"MZ", "application/octet-stream")}, headers=a)
