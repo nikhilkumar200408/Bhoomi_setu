@@ -242,9 +242,12 @@ def test_faithfulness_uses_verified_source_quotes_not_retrieval_status():
         {"evidence_id": "ev3", "quote": "The fee is 2%.", "verification": {"quote_found_in_source": True}},
         {"evidence_id": "ev4", "quote": "Different source text.", "verification": {"quote_found_in_source": True}},
     ]
-    assert qa.faithfulness(claims, evidence) == 0.75
+    # Only fully supported claims count; partial/contradicted claims remain in the denominator.
+    assert qa.faithfulness(claims, evidence) == 0.25
     evidence[1]["verification"]["quote_found_in_source"] = False
-    assert qa.faithfulness(claims, evidence) == 0.5
+    assert qa.faithfulness(claims, evidence) == 0.25
+    claims[1]["status"] = "SUPPORTED"
+    assert qa.faithfulness(claims, evidence) == 0.25
     assert qa.faithfulness([], evidence) is None
     assert F.verify_quote("a b c", "a  b") == (0, 3) and F.verify_quote("abc", "abd") is None
 
