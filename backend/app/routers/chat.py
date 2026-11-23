@@ -24,18 +24,30 @@ class ChatMessageRequest(BaseModel):
 
 
 def _follow_up_context(question: str, messages: list) -> str:
-    """Add only the last user question for short/reference-style follow-ups."""
-    words = question.strip().split()
+    """Keep follow-up retrieval focused on the current question.
+
+    Conversation history remains persisted; previous question wording is not
+    injected into BM25 because unrelated terms can suppress relevant passages.
+    """
+    current = question.strip()
+    if not messages:
+        return current
+
     starts_with_reference = bool(re.match(
         r"^(and|what about|how about|why|when|where|which one|iska|iski|iske|uska|uski|aur|phir|then|it|that|those|they)\b",
-        question.strip(), re.IGNORECASE
+        current, re.IGNORECASE
     ))
-    if not messages or (len(words) > 8 and not starts_with_reference):
-        return question.strip()
-    previous = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
-    if not previous:
-        return question.strip()
-    return f"Previous question: {previous}\nCurrent follow-up: {question.strip()}"
+    if not starts_with_reference:
+        return current
+
+    cleaned = re.sub(
+        r"^(?:and|what about|how about|which one|why|when|where|iska|iski|iske|uska|uski|aur|phir|then|it|that|those|they)\b\s*",
+        "",
+        current,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    return cleaned or current
 
 
 @router.get("/sessions")

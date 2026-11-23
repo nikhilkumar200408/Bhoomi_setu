@@ -17,6 +17,10 @@ def tokens(text: str) -> List[str]:
     for t in _TOKEN.findall(text.lower()):
         if t in STOP:
             continue
+        # Normalize common derivational forms so "repayment" can
+        # match source wording such as "repay".
+        if len(t) > 6 and t.endswith("ment"):
+            t = t[:-4]
         if len(t) > 3 and t.endswith("s") and not t.endswith("ss"):
             t = t[:-1]
         out.append(t)
