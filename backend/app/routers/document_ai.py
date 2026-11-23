@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from .. import models
 from ..config import settings
 from ..database import (docai_answers_collection, docai_jobs_collection, docai_pages_collection,
-                        documents_collection)
+                        docai_vectors_collection, documents_collection)
 from ..deps import accessible_document_ids, document_scope, get_current_user, is_privileged
 from ..services.audit.service import log_audit
 from ..services.docai import facts as F
@@ -17,6 +17,7 @@ from ..services.docai.errors import DocAIError
 from ..services.docai.text import extract_pages
 from ..services.docai.structure import build_document_structure
 from ..services.docai.ollama import OllamaError, generate_evidence_draft
+from ..services.docai.embeddings import EmbeddingError, embed_texts, cosine_similarity
 
 router = APIRouter(prefix="/api/document-ai", tags=["document-ai"])
 MAX_QUESTION_CHARS = 2000
@@ -59,7 +60,9 @@ class IndexRequest(BaseModel):
 def _job_out(j: dict) -> dict:
     return {"job_id": j["_id"], "document_id": j["document_id"], "status": j["status"],
             "pages_total": j.get("pages_total"), "pages_processed": j.get("pages_processed", 0),
-            "chunks_created": j.get("chunks_created", 0), "error": j.get("error"),
+            "chunks_created": j.get("chunks_created", 0), "vectors_created": j.get("vectors_created", 0),
+            "retrieval_mode": j.get("retrieval_mode", "BM25"), "embedding_warning": j.get("embedding_warning"),
+            "error": j.get("error"),
             "created_at": _iso(j["created_at"]), "completed_at": _iso(j["completed_at"]) if j.get("completed_at") else None,
             "structure": j.get("structure")}
 
@@ -73,14 +76,36 @@ async def _run_index(job_id: str, document: dict) -> None:
             raise DocAIError(422, "UNPROCESSABLE_DOCUMENT", "No readable text could be extracted from this document.")
         structure = await run_in_threadpool(build_document_structure, pages)
         await docai_pages_collection.delete_many({"document_id": document["_id"]})
-        chunks = 0
-        for p in pages:
-            await docai_pages_collection.insert_one({"_id": models.gen_uuid(), "document_id": document["_id"],
-                                                     "filename": document["filename"], **p})
-            chunks += len(qa.build_chunks([{**p, "document_id": document["_id"], "filename": document["filename"]}]))
+        await docai_vectors_collection.delete_many({"document_id": document["_id"]})
+        enriched_pages = [{**p, "document_id": document["_id"], "filename": document["filename"]} for p in pages]
+        chunks = [chunk for page in enriched_pages for chunk in qa.build_chunks([page])]
+        vectors_created, embedding_warning = 0, None
+        if settings.OLLAMA_EMBEDDINGS_ENABLED and chunks:
+            try:
+                for offset in range(0, len(chunks), 32):
+                    batch = chunks[offset:offset + 32]
+                    texts = [chunk["page"]["text"][chunk["start"]:chunk["end"]] for chunk in batch]
+                    vectors = await run_in_threadpool(embed_texts, texts)
+                    records = []
+                    for chunk, vector in zip(batch, vectors):
+                        page = chunk["page"]
+                        key = f'{document["_id"]}:{page["page"]}:{chunk["start"]}:{chunk["end"]}'
+                        records.append({"_id": key, "document_id": document["_id"], "filename": document["filename"],
+                                        "page": page["page"], "start": chunk["start"], "end": chunk["end"],
+                                        "vector": vector, "model": settings.OLLAMA_EMBEDDING_MODEL})
+                    if records:
+                        await docai_vectors_collection.insert_many(records)
+                        vectors_created += len(records)
+            except EmbeddingError:
+                await docai_vectors_collection.delete_many({"document_id": document["_id"]})
+                vectors_created, embedding_warning = 0, "Local embeddings unavailable; lexical indexing completed."
+        for p in enriched_pages:
+            await docai_pages_collection.insert_one({"_id": models.gen_uuid(), **p})
         await docai_jobs_collection.update_one({"_id": job_id}, {"$set": {
             "status": "COMPLETED", "pages_total": len(pages), "pages_processed": len(pages),
-            "chunks_created": chunks, "structure": structure, "completed_at": models.utcnow()}})
+            "chunks_created": len(chunks), "vectors_created": vectors_created,
+            "retrieval_mode": "HYBRID_BM25_VECTOR" if vectors_created else "BM25",
+            "embedding_warning": embedding_warning, "structure": structure, "completed_at": models.utcnow()}})
         await documents_collection.update_one({"_id": document["_id"]}, {"$set": {"docai_status": "INDEXED"}})
     except DocAIError as e:
         err = {"code": e.code, "message": e.message}
@@ -141,8 +166,19 @@ async def ask(payload: AskRequest, user: dict = Depends(get_current_user)):
         raise DocAIError(400, "INVALID_REQUEST", "question must be non-empty text of reasonable length.")
     docs = await _own_documents(payload.document_ids, user)
     pages = await _indexed_pages(docs)
+    vector_scores = {}
+    if settings.OLLAMA_EMBEDDINGS_ENABLED:
+        try:
+            query_vector = (await run_in_threadpool(embed_texts, [payload.question.strip()]))[0]
+            async for item in docai_vectors_collection.find({"document_id": {"$in": [d["_id"] for d in docs]}}):
+                key = (item["document_id"], item["page"], item["start"], item["end"])
+                vector_scores[key] = cosine_similarity(query_vector, item.get("vector", []))
+        except EmbeddingError:
+            vector_scores = {}  # Ollama downtime safely falls back to BM25.
     result = qa.answer_question(payload.question.strip(), pages, [d["_id"] for d in docs],
-                                payload.include_superseded_documents, max(1, min(payload.max_evidence_per_claim, 10)))
+                                payload.include_superseded_documents,
+                                max(1, min(payload.max_evidence_per_claim, 10)),
+                                vector_scores=vector_scores)
 
     # Ollama is optional drafting assistance only. It never changes source-backed claims,
     # citations, contradictions, abstention, or the backend-computed faithfulness score.
