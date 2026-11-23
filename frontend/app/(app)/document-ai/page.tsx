@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
-  AlertTriangle, BrainCircuit, CheckCircle2, FileSearch, GitBranch,
+  AlertTriangle, BrainCircuit, Calculator, CheckCircle2, FileSearch, GitBranch,
   Loader2, RefreshCw, Send, ShieldCheck, Sparkles, UploadCloud,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
@@ -35,6 +35,7 @@ type Answer = {
   llm_assistance?: { status: string; draft?: string | null; model?: string | null; notice?: string };
 };
 type PageResult<T> = { items: T[]; next_cursor?: string | null };
+type CalculationResult = { formula: string; working: string; notice: string; calculation_type: string; result: Record<string, number> };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -50,6 +51,13 @@ export default function DocumentAIPage() {
   const [indexMessage, setIndexMessage] = useState("");
   const [question, setQuestion] = useState("");
   const [language, setLanguage] = useState<"en" | "hi">("en");
+  const [calculationType, setCalculationType] = useState<"simple_interest" | "compound_interest" | "emi">("simple_interest");
+  const [principal, setPrincipal] = useState("100000");
+  const [annualRate, setAnnualRate] = useState("8");
+  const [duration, setDuration] = useState("2");
+  const [durationUnit, setDurationUnit] = useState<"years" | "months">("years");
+  const [calculation, setCalculation] = useState<CalculationResult | null>(null);
+  const [calculating, setCalculating] = useState(false);
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -165,6 +173,27 @@ export default function DocumentAIPage() {
       setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Indexing failed.");
     } finally {
       setIndexing(false);
+    }
+  }
+
+  async function runCalculation() {
+    setCalculating(true);
+    setError(null);
+    try {
+      const result = await api.post<CalculationResult>("/api/document-ai/calculate", {
+        calculation_type: calculationType,
+        principal: Number(principal),
+        annual_rate_percent: Number(annualRate),
+        duration_value: Number(duration),
+        duration_unit: durationUnit,
+        compounding_frequency: 12,
+      });
+      setCalculation(result);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Calculation failed. Check the entered values.");
+      setCalculation(null);
+    } finally {
+      setCalculating(false);
     }
   }
 
