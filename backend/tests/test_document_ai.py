@@ -427,3 +427,31 @@ def test_financial_calculator_rejects_invalid_inputs():
         calculate_financial_value("simple_interest", 0, 8, 2, "years")
     with pytest.raises(ValueError):
         calculate_financial_value("unknown", 100000, 8, 2, "years")
+
+
+
+@pytest.mark.asyncio
+async def test_phase8_hindi_response_language_and_calculator_api(client):
+    operator = await hdr(client, "op_a")
+
+    calc = await client.post(
+        "/api/document-ai/calculate",
+        json={
+            "calculation_type": "simple_interest",
+            "principal": 100000,
+            "annual_rate_percent": 8,
+            "duration_value": 2,
+            "duration_unit": "years",
+        },
+        headers=operator,
+    )
+    assert calc.status_code == 200, calc.text
+    assert calc.json()["result"]["interest"] == 16000.0
+    assert calc.json()["input_source"] == "USER_PROVIDED"
+
+    doc = await upload_pdf(client, operator, "loan_agreement.pdf", BASE)
+    await index(client, operator, doc)
+    response = await ask(client, operator, "interest rate", [doc], language="hi")
+    assert response.status_code == 200, response.text
+    assert response.json()["response_language"] == "hi"
+    assert response.json()["evidence"][0]["verification"]["quote_found_in_source"] is True
