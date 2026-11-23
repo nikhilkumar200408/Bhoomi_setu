@@ -11,6 +11,7 @@ import {
   LogOut,
   Search,
   BrainCircuit,
+  MessageCircle,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useLanguage, Lang, LANG_LABELS } from "@/lib/language";
@@ -18,6 +19,7 @@ import { LoadingState } from "@/components/ui/States";
 
 const NAV_ITEMS = [
   { href: "/document-ai", key: "document_ai", icon: BrainCircuit },
+  { href: "/chat", key: "ai_chat", icon: MessageCircle, label: "AI Chat" },
   { href: "/audit", key: "audit_trail", icon: History },
 ];
 
@@ -69,7 +71,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   />
                 )}
                 <Icon size={16} />
-                {t(item.key)}
+                {item.label || t(item.key)}
               </Link>
             );
           })}
