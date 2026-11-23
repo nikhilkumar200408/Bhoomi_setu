@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from .. import models
 from ..config import settings
-from ..database import (docai_answers_collection, docai_jobs_collection, docai_pages_collection,
+from ..database import (audit_collection, docai_answers_collection, docai_jobs_collection, docai_pages_collection,
                         docai_vectors_collection, documents_collection)
 from ..deps import accessible_document_ids, document_scope, get_current_user, is_privileged
 from ..services.audit.service import log_audit
@@ -306,6 +306,7 @@ async def review_claim(claim_id: str, payload: ReviewRequest, user: dict = Depen
     a = await docai_answers_collection.find_one({"claims.claim_id": claim_id})
     if not a:
         raise _not_found("claim", claim_id=claim_id)
+    await _get_answer(a["_id"], user)
     claim = next(c for c in a["claims"] if c["claim_id"] == claim_id)
     review = {"decision": payload.decision, "reason": payload.reason.strip(), "reviewed_by": user["_id"], "reviewed_at": _iso()}
     claim["review"] = review  # original status and evidence are deliberately left untouched
@@ -314,6 +315,54 @@ async def review_claim(claim_id: str, payload: ReviewRequest, user: dict = Depen
     await log_audit(action="DOCAI_CLAIM_REVIEW", user_id=user["_id"], new_value=payload.decision,
                     metadata={"claim_id": claim_id, "answer_id": a["_id"], "reason": review["reason"]})
     return {"claim_id": claim_id, "review_status": payload.decision, "reviewed_by": user["_id"], "reviewed_at": review["reviewed_at"]}
+
+
+class CorrectClaimRequest(BaseModel):
+    corrected_text: str = Field(min_length=3, max_length=4000)
+    reason: str = Field(min_length=5, max_length=1000)
+
+
+@router.post("/claims/{claim_id}/correct")
+async def correct_claim(claim_id: str, payload: CorrectClaimRequest, user: dict = Depends(get_current_user)):
+    """Store a reviewer correction separately; never mutate the source quote or original claim."""
+    if user["role"] != "REVENUE_OFFICER":
+        raise DocAIError(403, "FORBIDDEN", "Only a Revenue Officer may correct claims.")
+    a = await docai_answers_collection.find_one({"claims.claim_id": claim_id})
+    if not a:
+        raise _not_found("claim", claim_id=claim_id)
+    await _get_answer(a["_id"], user)
+    claim = next(c for c in a["claims"] if c["claim_id"] == claim_id)
+    old_text = claim.get("correction", {}).get("corrected_text") or claim["text"]
+    correction = {
+        "corrected_text": payload.corrected_text.strip(),
+        "reason": payload.reason.strip(),
+        "original_text": claim["text"],
+        "corrected_by": user["_id"],
+        "corrected_at": _iso(),
+    }
+    claim["correction"] = correction
+    await docai_answers_collection.replace_one({"_id": a["_id"]}, a)
+    await log_audit(
+        action="DOCAI_CLAIM_CORRECTION", user_id=user["_id"],
+        old_value=old_text, new_value=correction["corrected_text"],
+        metadata={"claim_id": claim_id, "answer_id": a["_id"], "reason": correction["reason"]},
+    )
+    return {"claim_id": claim_id, "correction": correction, "source_evidence_unchanged": True}
+
+
+@router.get("/answers/{answer_id}/audit")
+async def answer_audit(answer_id: str, user: dict = Depends(get_current_user)):
+    """Return audit history for an answer after enforcing the same ownership check as answer reads."""
+    await _get_answer(answer_id, user)
+    cursor = audit_collection.find({"log_metadata.answer_id": answer_id}).sort("timestamp", -1).limit(100)
+    events = []
+    async for item in cursor:
+        events.append({
+            "action": item.get("action"), "old_value": item.get("old_value"),
+            "new_value": item.get("new_value"), "metadata": item.get("log_metadata", {}),
+            "timestamp": _iso(item.get("timestamp")), "user_id": item.get("user_id"),
+        })
+    return {"answer_id": answer_id, "items": events}
 
 
 # ----------------------------------------------------------------------------- contradictions / amendments
