@@ -468,6 +468,17 @@ async def _phase3_snapshot(user: dict, ids: Optional[list[str]] = None) -> dict:
     rules = [x async for x in compliance_rules_collection.find({"user_id": user["_id"]}).sort("created_at", -1).limit(100)]
     reviews = [x async for x in compliance_reviews_collection.find(
         {"document_ids": {"$in": accessible}}).sort("updated_at", -1).limit(300)]
+    # Keep every report section strictly inside the requested document scope.
+    for checklist in checklists:
+        checklist["document_ids"] = [did for did in checklist.get("document_ids", []) if did in accessible]
+        checklist["document_names"] = [
+            d.get("filename", "Document") for d in docs if d["_id"] in checklist["document_ids"]
+        ]
+        for req in checklist.get("requirements", []):
+            req["evidence"] = [ev for ev in req.get("evidence", []) if ev.get("document_id") in accessible]
+    for review in reviews:
+        review["document_ids"] = [did for did in review.get("document_ids", []) if did in accessible]
+        review["evidence"] = [ev for ev in review.get("evidence", []) if ev.get("document_id") in accessible]
     req_counts = {"FOUND": 0, "MISSING": 0, "NEEDS_VERIFICATION": 0}
     for checklist in checklists:
         for req in checklist.get("requirements", []):

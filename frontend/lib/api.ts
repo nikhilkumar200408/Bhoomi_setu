@@ -86,9 +86,9 @@ export { API_BASE_URL };
 
 export async function downloadAuthedPost(path: string, body: unknown, filename: string): Promise<void> {
   const token = getToken();
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await fetch(\`${API_BASE_URL}${path}\`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: \`Bearer ${token}\` } : {}) },
     body: JSON.stringify(body),
   });
   if (!res.ok) {

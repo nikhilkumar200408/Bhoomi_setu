@@ -117,12 +117,12 @@ export default function ReviewDashboardPage() {
     {notice && <div role="status" className="rounded-xl border border-line bg-white p-3 text-xs text-ink/65">{notice}</div>}
     {loading ? <div className="rounded-2xl border border-line bg-white p-12 text-center text-sm text-ink/50">Preparing review dashboard…</div> : data && s ? <>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {([
-          { label: "Indexed documents", value: s.indexed_documents, hint: s.indexed_pages + " indexed pages", Icon: FileText },
-          { label: "Pending reviews", value: s.pending_reviews, hint: s.further_review + " marked for further review", Icon: Activity },
-          { label: "Compliance exceptions", value: s.missing_requirements + s.needs_verification_requirements, hint: s.missing_requirements + " missing · " + s.needs_verification_requirements + " need verification", Icon: ShieldAlert },
-          { label: "Rule failures", value: s.rule_failures, hint: s.completed_reviews + " completed decisions", Icon: AlertTriangle },
-        ]).map((item) => { const Icon = item.Icon; return <div key={item.label} className="rounded-2xl border border-line bg-white p-4 shadow-sm"><div className="flex items-center justify-between"><p className="text-xs text-ink/55">{item.label}</p><Icon size={16} className="text-accent"/></div><p className="mt-2 text-3xl font-semibold text-navy">{item.value}</p><p className="mt-1 text-[11px] text-ink/45">{item.hint}</p></div>; })}
+        {[
+          ["Indexed documents", s.indexed_documents, s.indexed_pages + " indexed pages", FileText],
+          ["Pending reviews", s.pending_reviews, s.further_review + " marked for further review", Activity],
+          ["Compliance exceptions", s.missing_requirements + s.needs_verification_requirements, s.missing_requirements + " missing · " + s.needs_verification_requirements + " need verification", ShieldAlert],
+          ["Rule failures", s.rule_failures, s.completed_reviews + " completed decisions", AlertTriangle],
+        ].map(([label, value, hint, Icon]) => <div key={String(label)} className="rounded-2xl border border-line bg-white p-4 shadow-sm"><div className="flex items-center justify-between"><p className="text-xs text-ink/55">{label}</p><Icon size={16} className="text-accent"/></div><p className="mt-2 text-3xl font-semibold text-navy">{value as number}</p><p className="mt-1 text-[11px] text-ink/45">{hint}</p></div>)}
       </section>
       <section className="grid gap-5 xl:grid-cols-2">
         <div className="rounded-2xl border border-line bg-white p-5">
