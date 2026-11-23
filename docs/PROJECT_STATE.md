@@ -50,3 +50,8 @@ See `docs/IMPLEMENTATION_PROGRESS.md` for the detailed status and unverified tes
 - OCR languages require the corresponding Tesseract traineddata files.
 - A previously committed Fast2SMS credential was reported in Git history. Rotate it immediately if still active; never copy secrets into tracked files. History rewriting is a separate coordinated operation.
 - Phase 9 CI now runs backend tests, frontend lint/build, and Docker Compose validation/image builds on dev/main pushes and pull requests. The manual end-to-end checklist remains required; record exact results before release.
+
+
+## Phase 10 status
+
+Phase 10 adds explainability and review capabilities without changing the evidence-first authority model. Initial code updates include a stricter supported-claim faithfulness ratio, an always-visible workspace reset control, citation/key-point highlighting, additional analytics charts, and a one-line LLM summary display. Human correction/audit, local Hindi retrieval, and safe public web-page ingestion remain follow-up implementation items and are not yet complete.
