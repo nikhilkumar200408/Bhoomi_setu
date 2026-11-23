@@ -106,6 +106,8 @@ def answer_question(question: str, pages: List[dict], doc_ids: List[str], includ
         if len(claims) >= min(MAX_CLAIMS, max_evidence):
             break
         ev = F.evidence(c["page"], c["start"], c["end"], "SUPPORTS")
+        if c["page"].get("source_url"):
+            ev["source_url"] = c["page"]["source_url"]
         if not ev["verification"]["quote_found_in_source"]:
             continue  # never emit a citation the backend could not verify
         if ev["evidence_id"] in evidences:
