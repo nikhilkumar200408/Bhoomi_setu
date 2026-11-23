@@ -1,7 +1,7 @@
 """Document AI routes (additive module; see docs/API_CONTRACT.md). Every route is ownership-scoped."""
 from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, UploadFile, File
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
@@ -145,6 +145,34 @@ async def indexing_job(job_id: str, user: dict = Depends(get_current_user)):
         raise _not_found("indexing job")
     await _own_documents([job["document_id"]], user)
     return _job_out(job)
+
+
+# ----------------------------------------------------------------------------- domain-independent upload
+@router.post("/documents/upload")
+async def upload_document_ai_files(files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
+    """Upload source files directly to the Document AI workspace without running the legacy land-record pipeline."""
+    from .documents import _save_one
+
+    if not files:
+        raise DocAIError(400, "INVALID_REQUEST", "Select at least one file to upload.")
+    uploaded = []
+    errors = []
+    for file in files:
+        try:
+            document = await _save_one(file, user)
+            uploaded.append({
+                "id": document["_id"],
+                "filename": document["filename"],
+                "file_size_bytes": document["file_size_bytes"],
+                "status": document["status"],
+                "docai_status": document.get("docai_status"),
+                "uploaded_at": _iso(document["uploaded_at"]),
+            })
+        except Exception as exc:
+            errors.append({"filename": file.filename or "unnamed file", "message": str(getattr(exc, "detail", "Upload failed."))})
+    if not uploaded:
+        raise DocAIError(400, "UPLOAD_FAILED", "No files could be uploaded.", {"files": errors})
+    return {"items": uploaded, "errors": errors}
 
 
 # ----------------------------------------------------------------------------- QA
