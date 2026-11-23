@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .database import create_indexes, ping
-from .routers import auth, documents, audit, document_ai, chat, intelligence
+from .routers import auth, documents, audit, document_ai, chat, intelligence, compliance
 from .services.docai.errors import DocAIError
 
 
@@ -18,9 +18,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="BhoomiTrust AI",
-    description="Evidence-based Document AI for extraction, OCR, retrieval, contradiction detection, and source-cited answers.",
-    version="2.0.0",
+    title="TrustLens AI",
+    description="Evidence-based Document AI for extraction, OCR, retrieval, verification, compliance and source-cited answers.",
+    version="2.1.0",
     lifespan=lifespan,
 )
 
@@ -38,6 +38,7 @@ app.include_router(audit.router)
 app.include_router(document_ai.router)
 app.include_router(chat.router)
 app.include_router(intelligence.router)
+app.include_router(compliance.router)
 
 
 @app.exception_handler(DocAIError)
@@ -60,7 +61,7 @@ async def health():
 @app.get("/")
 def root():
     return {
-        "product": "BhoomiTrust AI",
+        "product": "TrustLens AI",
         "tagline": "Extract. Retrieve. Verify. Explain. — Evidence-based Document Intelligence.",
         "docs": "/docs",
     }
