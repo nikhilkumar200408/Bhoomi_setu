@@ -2,7 +2,7 @@
 
 Status key: Done, Partial, Not started, Not verified. Updated 2026-11-23 after reviewing the current `dev` source.
 
-## Existing BhoomiTrust AI land-record application
+## Existing platform workflows (separate from domain-independent Document AI)
 
 | Area | Status | Notes |
 |---|---|---|
@@ -26,7 +26,7 @@ Status key: Done, Partial, Not started, Not verified. Updated 2026-11-23 after r
 | Amendment tracking | Partial | Basic explicit-cue/base-reference/effective-date rules |
 | Human review | Done in code | Revenue Officer only; source evidence remains unchanged |
 | Document AI frontend | Not started | Must use the documented API contract |
-| Local Ollama LLM | Not started | Configuration preparation is separate from a working integration |
+| Local Ollama LLM | Partial | Optional local Llama 3.2 draft integration added; output is marked unverified and cannot replace evidence-backed answers. Runtime and regression tests pending |
 | BGE-M3 embeddings / vector retrieval | Not started | Requires storage design, indexing and evaluation |
 | Semantic clause comparison | Not started | Do not label lexical/rule-based matches as semantic AI |
 
@@ -67,13 +67,12 @@ Not yet verified in the current session:
 
 ## Next phases
 
-1. Add disabled-by-default Ollama configuration without changing existing demo/provider behavior.
-2. Verify ingestion and scanned-PDF OCR.
-3. Integrate local Qwen3 4B chat through Ollama with timeout and dependency-failure handling.
-4. Integrate BGE-M3 embeddings and hybrid retrieval.
-5. Implement claim-level grounded generation, citation verification, abstention and review.
-6. Improve contradiction/amendment intelligence with test fixtures.
-7. Build the complete Document AI frontend.
-8. Run full regression/security/E2E tests and document exact outcomes.
+1. **Local LLM foundation — code added, runtime validation pending:** Ollama client, timeout handling, opt-in switch, Llama 3.2 selection, and safe unverified-draft response. Existing deterministic QA remains authoritative.
+2. **Universal document ingestion:** normalize varied PDF layouts, scanned pages, tables, and multi-page sections while retaining page-level source coordinates and extraction confidence.
+3. **BGE-M3 embeddings and hybrid retrieval:** combine lexical BM25 and vector retrieval; evaluate retrieval against multi-domain test packs.
+4. **Zero-guessing verification:** sentence/claim-level evidence mapping, exact quote verification, conservative abstention, and calibrated reporting (never label heuristic scores as truth probabilities).
+5. **Document intelligence:** improve cross-document contradictions, amendment chains, effective dates, and current-version reasoning with multi-domain fixtures.
+6. **Document AI frontend:** independent upload/indexing, evidence viewer, Q&A, contradiction/amendment views, PDF passage highlighting, and review workflow.
+7. **Regression, security and end-to-end validation:** preserve existing platform workflows and test banking, insurance, contracts, policies, scanned PDFs, tables, and multilingual cases.
 
 Do not call the system "complete" or "production-ready" until the outstanding items above have been tested.
