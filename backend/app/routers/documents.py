@@ -30,6 +30,7 @@ def _document_out(document: dict) -> schemas.DocumentOut:
         file_size_bytes=document["file_size_bytes"], status=document["status"],
         uploaded_at=document["uploaded_at"],
         processed_at=document.get("processed_at"), error_message=document.get("error_message"),
+        docai_status=document.get("docai_status"),
     )
 
 
