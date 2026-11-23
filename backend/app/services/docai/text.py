@@ -128,7 +128,8 @@ def _metadata(text: str, source_type: str, layout_blocks: List[dict],
         quality = "TEXT_LAYER_PRESENT"
 
     return {
-        "extraction_method": "TESSERACT_OCR" if source_type == "OCR_TEXT" else "PDF_TEXT_LAYER",
+        "extraction_method": ("TESSERACT_OCR" if source_type == "OCR_TEXT"
+                              else "WEBPAGE_TEXT" if source_type == "WEB_TEXT" else "PDF_TEXT_LAYER"),
         "text_char_count": len(text),
         "text_word_count": len(text.split()),
         "layout_block_count": len(layout_blocks),
