@@ -82,13 +82,26 @@ def date_after(text: str, label_re: re.Pattern) -> Optional[str]:
     return None
 
 
+def _fact_topic(low: str) -> Optional[str]:
+    if re.search(r"\bprocessing\s+fees?\b", low):
+        return "processing fee"
+
+    if (
+        re.search(r"\b(?:overdue|late payment|delayed payment)\b", low)
+        and re.search(r"\b(?:fee|fees|penalty|penalties|charge|charges)\b", low)
+    ):
+        return "overdue charge"
+
+    return next((t for t in TOPICS if re.search(r"\b" + t, low)), None)
+
+
 def extract_facts(page: dict) -> List[dict]:
     text = page["text"]
     facts = []
     for s, e in sentence_spans(text):
         sent = text[s:e]
         low = sent.lower()
-        topic = next((t for t in TOPICS if re.search(r"\b" + t, low)), None)
+        topic = _fact_topic(low)
         if not topic:
             continue
         for unit, rx in PATTERNS:

@@ -361,3 +361,31 @@ def test_eligibility_thresholds_for_different_clauses_are_not_compared():
     ]
     result = F.analyse(pages)
     assert not [x for x in result["contradictions"] if x["topic"] == "minimum age"]
+
+
+def test_processing_fee_and_overdue_charge_are_not_false_contradictions():
+    pages = [
+        {"document_id": "policy-a", "filename": "policy_a.pdf", "page": 1,
+         "source_type": "PDF_TEXT",
+         "text": "The processing fee is 0.75 percent."},
+        {"document_id": "policy-b", "filename": "policy_b.pdf", "page": 1,
+         "source_type": "PDF_TEXT",
+         "text": "The processing fee is 1.00 percent."},
+        {"document_id": "policy-c", "filename": "policy_c.pdf", "page": 1,
+         "source_type": "PDF_TEXT",
+         "text": "The overdue instalment fee is 1.50 percent."},
+    ]
+
+    result = F.analyse(pages)
+
+    processing_conflicts = [
+        x for x in result["contradictions"]
+        if x["topic"].startswith("processing fee")
+    ]
+    overdue_conflicts = [
+        x for x in result["contradictions"]
+        if x["topic"].startswith("overdue charge")
+    ]
+
+    assert len(processing_conflicts) == 1
+    assert overdue_conflicts == []
