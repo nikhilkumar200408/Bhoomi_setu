@@ -499,3 +499,15 @@ def test_hindi_question_retrieves_hindi_source_passage_with_verified_quote():
     assert result["evidence"][0]["quote"] == page["text"]
     assert result["evidence"][0]["verification"]["quote_found_in_source"] is True
     assert result["faithfulness_score"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_webpage_import_is_disabled_until_admin_allowlist_is_configured(client):
+    user = await hdr(client, "web_import_disabled")
+    response = await client.post(
+        "/api/document-ai/sources/webpage/import",
+        json={"url": "https://example.com/terms"},
+        headers=user,
+    )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "WEB_IMPORT_DISABLED"
