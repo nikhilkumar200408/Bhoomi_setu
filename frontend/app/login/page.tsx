@@ -43,7 +43,7 @@ export default function LoginPage() {
           <div className="h-9 w-9 rounded-full border-2 border-accent-light flex items-center justify-center">
             <ShieldCheck size={18} className="text-accent-light" />
           </div>
-          <span className="font-serif font-semibold text-lg tracking-tight">BhoomiTrust AI</span>
+          <span className="font-serif font-semibold text-lg tracking-tight">Document AI</span>
         </motion.div>
 
         <motion.div
@@ -52,17 +52,15 @@ export default function LoginPage() {
           transition={{ duration: 0.6, delay: 0.1 }}
           className="relative z-10 max-w-md"
         >
-          <p className="text-xs uppercase tracking-wide text-accent-light mb-3">SIH 2026 · PS 26018</p>
+          <p className="text-xs uppercase tracking-wide text-accent-light mb-3">ZERO-GUESSING DOCUMENT INTELLIGENCE</p>
           <h1 className="font-serif text-4xl leading-tight mb-5">
-            Extract. Validate. Score. Verify. Trust.
+            Read. Verify. Compare. Cite.
           </h1>
           <p className="text-paper/70 text-sm leading-relaxed mb-8">
-            A Trust &amp; Validation Layer for digitized land records. AI extraction is
-            automated where reliable and escalated to an authorized officer wherever
-            uncertain.
+            A domain-independent document intelligence workspace for contracts, banking policies, insurance terms, regulatory circulars and dense multi-page PDFs. Answers are grounded in source evidence; unsupported claims are withheld.
           </p>
           <div className="border-t border-paper/15 pt-6 text-xs text-paper/50 leading-relaxed">
-            AI extraction and validation do not constitute legal ownership determination.
+            Every factual answer is tied to document and page-level evidence.
           </div>
         </motion.div>
 
@@ -72,7 +70,7 @@ export default function LoginPage() {
           transition={{ delay: 0.4 }}
           className="relative z-10 text-xs text-paper/40"
         >
-          All approvals are digitally signed and permanently auditable.
+          Built for evidence-first document review.
         </motion.p>
       </div>
 
@@ -86,11 +84,11 @@ export default function LoginPage() {
         >
           <div className="lg:hidden flex items-center gap-2 mb-8">
             <ShieldCheck size={20} className="text-accent" />
-            <span className="font-serif font-semibold text-lg text-navy">BhoomiTrust AI</span>
+            <span className="font-serif font-semibold text-lg text-navy">Document AI</span>
           </div>
 
           <h2 className="font-serif text-2xl text-navy mb-1">Sign in</h2>
-          <p className="text-sm text-ink/55 mb-8">Access the land record digitization workspace.</p>
+          <p className="text-sm text-ink/55 mb-8">Access your evidence-first document intelligence workspace.</p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
