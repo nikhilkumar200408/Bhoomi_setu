@@ -455,3 +455,20 @@ async def test_phase8_hindi_response_language_and_calculator_api(client):
     assert response.status_code == 200, response.text
     assert response.json()["response_language"] == "hi"
     assert response.json()["evidence"][0]["verification"]["quote_found_in_source"] is True
+
+
+
+def test_hindi_question_retrieves_hindi_source_passage_with_verified_quote():
+    page = {
+        "document_id": "doc-hindi",
+        "filename": "policy_hindi.pdf",
+        "page": 1,
+        "source_type": "PDF_TEXT",
+        "text": "वार्षिक ब्याज दर आठ प्रतिशत है।",
+    }
+    result = qa.answer_question("वार्षिक ब्याज दर क्या है?", [page], ["doc-hindi"])
+    assert not result["abstained"]
+    assert result["claims"][0]["status"] == "SUPPORTED"
+    assert result["evidence"][0]["quote"] == page["text"]
+    assert result["evidence"][0]["verification"]["quote_found_in_source"] is True
+    assert result["faithfulness_score"] == 1.0
