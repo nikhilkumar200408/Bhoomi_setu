@@ -12,17 +12,17 @@ from .nlp import tokens, bm25_rank
 
 PATTERNS = {
     "PROPERTY_ID": [
-        re.compile(r"\\b(?:khasra|khata|survey|plot|gat)\\s*(?:no\\.?|number|#)?\\s*[:.-]?\\s*([A-Z0-9/-]{2,24})", re.I),
+        re.compile(r"\b(?:khasra|khata|survey|plot|gat)\s*(?:no\.?|number|#)?\s*[:.-]?\s*([A-Z0-9/-]{2,24})", re.I),
     ],
     "AGREEMENT_ID": [
-        re.compile(r"\\b(?:agreement|deed|document|registration)\\s*(?:no\\.?|number|#)?\\s*[:.-]?\\s*([A-Z0-9/-]{3,30})", re.I),
+        re.compile(r"\b(?:agreement|deed|document|registration)\s*(?:no\.?|number|#)?\s*[:.-]?\s*([A-Z0-9/-]{3,30})", re.I),
     ],
     "DATE": [
-        re.compile(r"\\b(?:\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|\\d{4}-\\d{2}-\\d{2}|\\d{1,2}\\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+\\d{4})\\b", re.I),
+        re.compile(r"\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})\b", re.I),
     ],
     "OWNER": [
-        re.compile(r"\\b(?:owner|owned by|purchaser|seller|lessor|lessee|applicant|in the name of)\\s*[:：-]?\\s*([A-Z][A-Za-z.' -]{2,55})", re.I),
-        re.compile(r"(?:मालिक|स्वामी|खातेदार|आवेदक)\\s*[:：-]?\\s*([\\u0900-\\u097F]{2,30}(?:\\s+[\\u0900-\\u097F]{2,30}){0,3})"),
+        re.compile(r"\b(?:owner|owned by|purchaser|seller|lessor|lessee|applicant|in the name of)\s*[:：-]?\s*([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,4})", re.I),
+        re.compile(r"(?:मालिक|स्वामी|खातेदार|आवेदक)\s*[:：-]?\s*([\u0900-\u097F]{2,30}(?:\s+[\u0900-\u097F]{2,30}){0,3})"),
     ],
 }
 LABELS = {"OWNER": "Person / owner candidate", "PROPERTY_ID": "Property identifier", "AGREEMENT_ID": "Document reference", "DATE": "Date"}
