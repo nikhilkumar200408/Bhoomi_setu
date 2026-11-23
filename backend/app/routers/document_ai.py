@@ -6,6 +6,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from .. import models
+from ..config import settings
 from ..database import (docai_answers_collection, docai_jobs_collection, docai_pages_collection,
                         documents_collection)
 from ..deps import accessible_document_ids, document_scope, get_current_user, is_privileged
@@ -14,6 +15,7 @@ from ..services.docai import facts as F
 from ..services.docai import qa
 from ..services.docai.errors import DocAIError
 from ..services.docai.text import extract_pages
+from ..services.docai.ollama import OllamaError, generate_evidence_draft
 
 router = APIRouter(prefix="/api/document-ai", tags=["document-ai"])
 MAX_QUESTION_CHARS = 2000
@@ -138,6 +140,26 @@ async def ask(payload: AskRequest, user: dict = Depends(get_current_user)):
     pages = await _indexed_pages(docs)
     result = qa.answer_question(payload.question.strip(), pages, [d["_id"] for d in docs],
                                 payload.include_superseded_documents, max(1, min(payload.max_evidence_per_claim, 10)))
+
+    # Ollama is optional drafting assistance only. It never changes source-backed claims,
+    # citations, contradictions, abstention, or the backend-computed faithfulness score.
+    if not settings.OLLAMA_ENABLED:
+        result["llm_assistance"] = {"status": "DISABLED", "draft": None, "model": None}
+    elif result["abstained"]:
+        result["llm_assistance"] = {"status": "SKIPPED_ABSTAINED", "draft": None, "model": settings.OLLAMA_CHAT_MODEL}
+    elif result["conflicts"]:
+        result["llm_assistance"] = {"status": "SKIPPED_CONFLICTS", "draft": None, "model": settings.OLLAMA_CHAT_MODEL}
+    else:
+        try:
+            result["llm_assistance"] = await run_in_threadpool(
+                generate_evidence_draft, payload.question.strip(), result["claims"], result["evidence"])
+        except OllamaError:
+            # Local model downtime must never break evidence-backed Q&A.
+            result["llm_assistance"] = {
+                "status": "UNAVAILABLE", "draft": None, "model": settings.OLLAMA_CHAT_MODEL,
+                "notice": "Local drafting is unavailable; the source-backed answer is unchanged.",
+            }
+
     stored = {**result, "_id": result["answer_id"], "user_id": user["_id"],
               "document_ids": [d["_id"] for d in docs], "include_superseded": payload.include_superseded_documents}
     await docai_answers_collection.insert_one(stored)
