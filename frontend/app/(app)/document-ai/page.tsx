@@ -348,6 +348,33 @@ export default function DocumentAIPage() {
         <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Faithfulness score</p><p className="mt-1 text-2xl font-semibold text-navy">{answer?.faithfulness_score == null ? "—" : `${Math.round(answer.faithfulness_score * 100)}%`}</p><p className="text-xs text-ink/45">Claims grounded in verified source quotes / all claims</p></CardContent></Card>
       </div>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Calculator size={17} /> Financial calculator</CardTitle>
+          <p className="text-xs text-ink/50">Calculate simple interest, compound interest or EMI with visible working. Inputs are supplied by you, not extracted or verified from documents.</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <label className="space-y-1 text-xs text-ink/60">Calculation
+              <select value={calculationType} onChange={(e) => setCalculationType(e.target.value as typeof calculationType)} className="w-full rounded-card border border-line bg-white p-2 text-sm text-navy">
+                <option value="simple_interest">Simple interest</option><option value="compound_interest">Compound interest</option><option value="emi">Loan EMI</option>
+              </select>
+            </label>
+            <label className="space-y-1 text-xs text-ink/60">Principal (₹)<input type="number" min="1" value={principal} onChange={(e) => setPrincipal(e.target.value)} className="w-full rounded-card border border-line bg-white p-2 text-sm text-navy" /></label>
+            <label className="space-y-1 text-xs text-ink/60">Annual rate (%)<input type="number" min="0" max="100" step="0.01" value={annualRate} onChange={(e) => setAnnualRate(e.target.value)} className="w-full rounded-card border border-line bg-white p-2 text-sm text-navy" /></label>
+            <label className="space-y-1 text-xs text-ink/60">Duration<input type="number" min="0.01" value={duration} onChange={(e) => setDuration(e.target.value)} className="w-full rounded-card border border-line bg-white p-2 text-sm text-navy" /></label>
+            <label className="space-y-1 text-xs text-ink/60">Duration unit
+              <select value={durationUnit} onChange={(e) => setDurationUnit(e.target.value as "years" | "months")} className="w-full rounded-card border border-line bg-white p-2 text-sm text-navy"><option value="years">Years</option><option value="months">Months</option></select>
+            </label>
+          </div>
+          <Button type="button" onClick={runCalculation} disabled={calculating || !principal || !annualRate || !duration}>{calculating ? <><Loader2 size={14} className="animate-spin" /> Calculating…</> : "Calculate with working"}</Button>
+          {calculation && <div className="rounded-card border border-line bg-slate-50 p-4">
+            <p className="text-sm font-semibold text-navy">{calculation.formula}</p><p className="mt-2 text-sm text-ink/75">{calculation.working}</p>
+            <div className="mt-3 flex flex-wrap gap-4">{Object.entries(calculation.result).map(([key, value]) => <div key={key}><p className="text-[11px] uppercase tracking-wide text-ink/45">{key.replaceAll("_", " ")}</p><p className="text-lg font-semibold text-navy">₹{value.toLocaleString("en-IN", {minimumFractionDigits:2, maximumFractionDigits:2})}</p></div>)}</div>
+            <p className="mt-2 text-xs text-ink/50">{calculation.notice}</p>
+          </div>}
+        </CardContent>
+      </Card>
       <div className="grid gap-5 xl:grid-cols-2">
         <Card><CardHeader><CardTitle>Document indexing status</CardTitle></CardHeader><CardContent>
           <div className="h-64 w-full"><ResponsiveContainer width="100%" height="100%"><BarChart data={[
