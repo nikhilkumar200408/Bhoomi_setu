@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Bot, Check, ChevronDown, FileText, Loader2, MessageCircle, Plus, Send, ShieldCheck, Sparkles, Trash2, User, X } from "lucide-react";
+import { AlertCircle, Bot, Check, ChevronDown, FileText, Loader2, MessageCircle, Plus, Send, ShieldCheck, Sparkles, Trash2, User, X, ExternalLink, BookOpen, Quote } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { LoadingState } from "@/components/ui/States";
@@ -46,6 +46,9 @@ export default function ChatPage() {
 
   const indexedDocs = useMemo(() => documents.filter(d => d.docai_status === "INDEXED"), [documents]);
   const selectedDocs = useMemo(() => indexedDocs.filter(d => selectedIds.includes(d.id)), [indexedDocs, selectedIds]);
+  const latestAnswer = useMemo(() => [...messages].reverse().find(message => message.role === "assistant" && message.answer)?.answer, [messages]);
+  const [activeEvidenceId, setActiveEvidenceId] = useState<string | null>(null);
+  const activeEvidence = latestAnswer?.evidence.find(item => item.evidence_id === activeEvidenceId) || latestAnswer?.evidence[0];
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
@@ -279,6 +282,52 @@ export default function ChatPage() {
           <div className="mx-auto mt-2 flex max-w-4xl flex-wrap items-center justify-between gap-2 text-[10px] text-ink/40"><span>Enter to send · Shift + Enter for new line · Max 2,000 characters</span><span>{selectedIds.length} document(s) in scope · Answers cite source passages</span></div>
         </form>
       </section>
+
+      <aside className="hidden w-[320px] shrink-0 flex-col border-l border-line bg-white xl:flex">
+        <div className="border-b border-line px-4 py-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-navy"><BookOpen size={16} className="text-accent"/> Evidence inspector</div>
+          <p className="mt-1 text-[11px] leading-5 text-ink/45">Source passages supporting the latest answer.</p>
+        </div>
+        {latestAnswer ? (
+          <div className="flex-1 space-y-4 overflow-y-auto p-4">
+            <div className="rounded-xl border border-line bg-slate-50 p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/45">Answer status</p>
+              <p className={latestAnswer.abstained ? "mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700" : "mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700"}>
+                <ShieldCheck size={14}/>{latestAnswer.abstained ? "Insufficient evidence" : "Evidence-backed response"}
+              </p>
+              <p className="mt-2 text-xs text-ink/55">{latestAnswer.evidence.length} source passage(s) · {latestAnswer.claims.length} claims checked</p>
+            </div>
+            <div>
+              <div className="mb-2 flex items-center justify-between"><h3 className="text-xs font-semibold text-navy">Retrieved sources</h3><span className="text-[10px] text-ink/40">{latestAnswer.evidence.length} found</span></div>
+              {latestAnswer.evidence.length ? (
+                <div className="space-y-2">
+                  {latestAnswer.evidence.map((item, index) => (
+                    <button key={item.evidence_id} onClick={() => setActiveEvidenceId(item.evidence_id)} className={activeEvidence?.evidence_id === item.evidence_id ? "w-full rounded-xl border border-accent/50 bg-blue-50/60 p-3 text-left transition" : "w-full rounded-xl border border-line bg-white p-3 text-left transition hover:bg-slate-50"}>
+                      <div className="flex items-start gap-2"><FileText size={15} className="mt-0.5 shrink-0 text-accent"/><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-navy">{item.filename}</span><span className="mt-1 block text-[10px] text-ink/45">Source {index + 1} · Page {item.page_number}</span></span>{item.verification?.quote_found_in_source && <Check size={13} className="shrink-0 text-emerald-600"/>}</div>
+                    </button>
+                  ))}
+                </div>
+              ) : <p className="rounded-xl border border-dashed border-line p-3 text-xs text-ink/45">No supporting passages were returned for this answer.</p>}
+            </div>
+            {activeEvidence && (
+              <div className="rounded-xl border border-line p-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-navy"><Quote size={13} className="text-accent"/> Source excerpt</div>
+                <p className="mt-3 whitespace-pre-wrap text-xs leading-6 text-ink/75">“{activeEvidence.quote}”</p>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3"><span className="text-[10px] text-ink/45">{activeEvidence.filename} · Page {activeEvidence.page_number}</span><span className={activeEvidence.verification?.quote_found_in_source ? "text-[10px] font-medium text-emerald-700" : "text-[10px] font-medium text-amber-700"}>{activeEvidence.verification?.quote_found_in_source ? "Quote verified" : "Verification unavailable"}</span></div>
+                {activeEvidence.source_url && <a href={activeEvidence.source_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-accent hover:underline">Open source <ExternalLink size={11}/></a>}
+              </div>
+            )}
+            {!!latestAnswer.conflicts.length && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-semibold text-amber-900">Potential conflicts</p>{latestAnswer.conflicts.map((conflict,index)=><p key={index} className="mt-2 text-xs leading-5 text-amber-900">{conflict.topic}: {conflict.explanation || conflict.status}</p>)}</div>}
+          </div>
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent-bg text-accent"><BookOpen size={20}/></div>
+            <p className="mt-3 text-sm font-semibold text-navy">Evidence appears here</p>
+            <p className="mt-1 text-xs leading-5 text-ink/45">Ask a question to inspect cited passages, source pages and verification details alongside the conversation.</p>
+          </div>
+        )}
+        <div className="border-t border-line p-3 text-[10px] leading-5 text-ink/40"><ShieldCheck size={12} className="mr-1 inline text-verified"/> Only retrieved source evidence is shown here.</div>
+      </aside>
     </div>
   );
 }
