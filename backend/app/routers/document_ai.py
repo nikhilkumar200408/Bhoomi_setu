@@ -17,7 +17,7 @@ from ..services.docai.calculations import calculate_financial_value
 from ..services.docai.errors import DocAIError
 from ..services.docai.text import extract_pages
 from ..services.docai.structure import build_document_structure
-from ..services.docai.ollama import OllamaError, generate_evidence_draft
+from ..services.docai.ollama import OllamaError, generate_evidence_draft, translate_query_to_english
 from ..services.docai.embeddings import EmbeddingError, embed_texts, cosine_similarity
 
 router = APIRouter(prefix="/api/document-ai", tags=["document-ai"])
@@ -229,11 +229,24 @@ async def ask(payload: AskRequest, user: dict = Depends(get_current_user)):
                 vector_scores[key] = cosine_similarity(query_vector, item.get("vector", []))
         except EmbeddingError:
             vector_scores = {}  # Ollama downtime safely falls back to BM25.
-    result = qa.answer_question(payload.question.strip(), pages, [d["_id"] for d in docs],
+    retrieval_question = payload.question.strip()
+    language_notice = None
+    if payload.language == "hi":
+        if settings.OLLAMA_ENABLED:
+            try:
+                retrieval_question = await run_in_threadpool(translate_query_to_english, payload.question.strip())
+            except OllamaError:
+                language_notice = "स्थानीय Hindi query translation उपलब्ध नहीं है; मूल प्रश्न से खोज की गई। बेहतर Hindi retrieval के लिए Ollama और llama3.2 चालू करें।"
+        else:
+            language_notice = "Hindi उत्तर/खोज के लिए local Ollama चालू करें। अभी मूल Hindi प्रश्न से खोज की गई है।"
+
+    result = qa.answer_question(retrieval_question, pages, [d["_id"] for d in docs],
                                 payload.include_superseded_documents,
                                 max(1, min(payload.max_evidence_per_claim, 10)),
                                 vector_scores=vector_scores)
-
+    result["question"] = payload.question.strip()
+    result["retrieval_query_translated"] = retrieval_question != payload.question.strip()
+    result["language_notice"] = language_notice
     result["response_language"] = payload.language
 
     # Ollama is optional drafting assistance only. It never changes source-backed claims,
