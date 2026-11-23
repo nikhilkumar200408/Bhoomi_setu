@@ -19,6 +19,7 @@ from ..services.docai.text import extract_pages
 from ..services.docai.structure import build_document_structure
 from ..services.docai.ollama import OllamaError, generate_evidence_draft, translate_query_to_english
 from ..services.docai.embeddings import EmbeddingError, embed_texts, cosine_similarity
+from ..services.docai.web_source import WebImportError, fetch_public_page
 
 router = APIRouter(prefix="/api/document-ai", tags=["document-ai"])
 MAX_QUESTION_CHARS = 2000
@@ -49,7 +50,8 @@ async def _indexed_pages(docs: List[dict]) -> List[dict]:
                          {"document_ids": not_indexed})
     cursor = docai_pages_collection.find({"document_id": {"$in": [d["_id"] for d in docs]}}).sort(
         [("document_id", 1), ("page", 1)])
-    return [{k: p[k] for k in ("document_id", "filename", "page", "text", "source_type")} async for p in cursor]
+    return [{**{k: p[k] for k in ("document_id", "filename", "page", "text", "source_type")},
+             "source_url": p.get("source_url")} async for p in cursor]
 
 
 # ----------------------------------------------------------------------------- indexing
@@ -78,7 +80,8 @@ async def _run_index(job_id: str, document: dict) -> None:
         structure = await run_in_threadpool(build_document_structure, pages)
         await docai_pages_collection.delete_many({"document_id": document["_id"]})
         await docai_vectors_collection.delete_many({"document_id": document["_id"]})
-        enriched_pages = [{**p, "document_id": document["_id"], "filename": document["filename"]} for p in pages]
+        enriched_pages = [{**p, "document_id": document["_id"], "filename": document["filename"],
+                           "source_url": document.get("source_url")} for p in pages]
         chunks = [chunk for page in enriched_pages for chunk in qa.build_chunks([page])]
         vectors_created, embedding_warning = 0, None
         if settings.OLLAMA_EMBEDDINGS_ENABLED and chunks:
@@ -174,6 +177,43 @@ async def upload_document_ai_files(files: List[UploadFile] = File(...), user: di
     if not uploaded:
         raise DocAIError(400, "UPLOAD_FAILED", "No files could be uploaded.", {"files": errors})
     return {"items": uploaded, "errors": errors}
+
+
+class WebpageImportRequest(BaseModel):
+    url: str = Field(min_length=12, max_length=2048)
+
+
+@router.post("/sources/webpage/import")
+async def import_public_webpage(payload: WebpageImportRequest, user: dict = Depends(get_current_user)):
+    """Fetch one allowlisted public webpage and register it as a traceable text source."""
+    if not settings.WEB_IMPORT_ALLOWED_DOMAINS.strip():
+        raise DocAIError(403, "WEB_IMPORT_DISABLED", "Webpage import is disabled until an administrator configures WEB_IMPORT_ALLOWED_DOMAINS.")
+    try:
+        source = await run_in_threadpool(fetch_public_page, payload.url, settings.WEB_IMPORT_ALLOWED_DOMAINS)
+    except WebImportError as exc:
+        raise DocAIError(400, "WEB_IMPORT_REJECTED", str(exc)) from exc
+
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    host = re.sub(r"[^a-zA-Z0-9.-]", "-", payload.url.split("/")[2])[:100]
+    filename = f"web-{host}-{uuid.uuid4().hex[:8]}.txt"
+    stored_path = os.path.join(settings.UPLOAD_DIR, f"{uuid.uuid4().hex}_{filename}")
+    with open(stored_path, "w", encoding="utf-8") as output:
+        output.write(f"Source title: {source['title']}\nSource URL: {source['source_url']}\nFetched at: {source['fetched_at']}\n\n{source['text']}")
+    document = {
+        "_id": models.gen_uuid(), "filename": filename, "stored_path": stored_path,
+        "file_type": "text/plain", "file_size_bytes": os.path.getsize(stored_path),
+        "status": models.DocumentStatus.UPLOADED.value, "uploaded_by": user["_id"],
+        "uploaded_at": models.utcnow(), "processed_at": None, "error_message": None,
+        "docai_status": None, "source_url": source["source_url"],
+        "source_title": source["title"], "source_fetched_at": source["fetched_at"],
+        "docai_source_type": "PUBLIC_WEBPAGE",
+    }
+    await documents_collection.insert_one(document)
+    await log_audit(action="DOCAI_WEB_IMPORT", document_id=document["_id"], user_id=user["_id"],
+                    metadata={"source_url": source["source_url"], "source_title": source["title"]})
+    return {"id": document["_id"], "filename": filename, "docai_status": None,
+            "source_url": source["source_url"], "source_title": source["title"],
+            "source_fetched_at": source["fetched_at"], "message": "Webpage imported. Index it to search its extracted text."}
 
 
 # ----------------------------------------------------------------------------- QA
