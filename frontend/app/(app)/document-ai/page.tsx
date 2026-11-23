@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle, BrainCircuit, CheckCircle2, FileSearch, GitBranch,
-  Loader2, RefreshCw, Send, ShieldCheck, Sparkles,
+  Loader2, RefreshCw, Send, ShieldCheck, Sparkles, UploadCloud,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -43,6 +43,7 @@ export default function DocumentAIPage() {
   const [indexedIds, setIndexedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [indexing, setIndexing] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [indexMessage, setIndexMessage] = useState("");
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
@@ -56,6 +57,7 @@ export default function DocumentAIPage() {
     try {
       const data = await api.get<Doc[]>("/api/documents");
       setDocuments(data);
+      setIndexedIds((current) => Array.from(new Set([...current, ...data.filter((doc) => doc.docai_status === "INDEXED").map((doc) => doc.id)])));
       setSelected((current) => current.filter((id) => data.some((doc) => doc.id === id)));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not load documents.");
@@ -70,7 +72,27 @@ export default function DocumentAIPage() {
     () => documents.filter((doc) => selected.includes(doc.id)),
     [documents, selected]
   );
-  const indexedCount = selectedDocs.filter((doc) => indexedIds.includes(doc.id)).length;
+  const isIndexed = (doc: Doc) => doc.docai_status === "INDEXED" || indexedIds.includes(doc.id);
+  const indexedCount = selectedDocs.filter(isIndexed).length;
+
+  async function uploadFiles(files: FileList | null) {
+    if (!files?.length) return;
+    const form = new FormData();
+    Array.from(files).forEach((file) => form.append("files", file));
+    setUploading(true);
+    setError(null);
+    try {
+      const result = await api.post<{ items: Doc[]; errors?: { filename: string; message: string }[] }>("/api/document-ai/documents/upload", form);
+      await loadDocuments();
+      if (result.errors?.length) setError(result.errors.map((item) => `${item.filename}: ${item.message}`).join("; "));
+      setSelected((current) => Array.from(new Set([...current, ...result.items.map((doc) => doc.id)])));
+      setIndexMessage(`${result.items.length} document(s) uploaded. Select all or index the uploaded files.`);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Document upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   function toggleDocument(id: string) {
     setSelected((current) => current.includes(id) ? current.filter((x) => x !== id) : [...current, id]);
@@ -88,7 +110,7 @@ export default function DocumentAIPage() {
       for (let i = 0; i < selected.length; i++) {
         const id = selected[i];
         const doc = documents.find((item) => item.id === id);
-        if (indexedIds.includes(id)) continue;
+        if (doc && isIndexed(doc)) continue;
         setIndexMessage(`Indexing ${i + 1} of ${selected.length}: ${doc?.filename ?? "document"}`);
         const started = await api.post<{ indexing_job_id: string }>(`/api/document-ai/documents/${id}/index`, {});
         let completed = false;
@@ -151,12 +173,26 @@ export default function DocumentAIPage() {
             Answers stay tied to page-level source evidence.
           </p>
         </div>
-        <Button variant="secondary" onClick={loadDocuments} disabled={indexing || asking}>
+        <Button variant="secondary" onClick={loadDocuments} disabled={indexing || asking || uploading}>
           <RefreshCw size={14} /> Refresh
         </Button>
       </div>
 
       {error && <ErrorState message={error} />}
+
+      <Card>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+          <div>
+            <p className="text-sm font-semibold text-navy">Add documents to this workspace</p>
+            <p className="mt-1 text-xs text-ink/50">Upload PDFs or scanned JPG/PNG files directly. This does not run the legacy land-record digitization workflow.</p>
+          </div>
+          <label className={`inline-flex cursor-pointer items-center gap-2 rounded-card bg-accent px-4 py-2.5 text-sm font-medium text-white ${uploading ? "pointer-events-none opacity-60" : "hover:opacity-90"}`}>
+            {uploading ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />}
+            {uploading ? "Uploading…" : "Upload documents"}
+            <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" className="hidden" disabled={uploading} onChange={(event) => { void uploadFiles(event.target.files); event.currentTarget.value = ""; }} />
+          </label>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.5fr)]">
         <Card>
@@ -171,7 +207,7 @@ export default function DocumentAIPage() {
               <div className="max-h-[390px] space-y-2 overflow-y-auto">
                 {documents.map((doc) => {
                   const checked = selected.includes(doc.id);
-                  const indexed = indexedIds.includes(doc.id);
+                  const indexed = isIndexed(doc);
                   return (
                     <label key={doc.id} className={`flex cursor-pointer items-start gap-3 rounded-card border p-3 transition-colors ${checked ? "border-accent bg-accent-bg/50" : "border-line hover:bg-slate-50"}`}>
                       <input type="checkbox" checked={checked} onChange={() => toggleDocument(doc.id)} className="mt-1 accent-blue-600" />
@@ -188,7 +224,7 @@ export default function DocumentAIPage() {
             )}
             <div className="flex items-center justify-between border-t border-line pt-3 text-xs text-ink/50">
               <span>{selected.length} selected · {indexedCount} indexed</span>
-              <span>Multi-document search</span>
+              <button type="button" className="font-medium text-accent hover:underline" onClick={() => setSelected(selected.length === documents.length ? [] : documents.map((doc) => doc.id))} disabled={!documents.length || indexing}>{selected.length === documents.length ? "Clear selection" : "Select all documents"}</button>
             </div>
             <Button className="w-full" onClick={indexSelected} disabled={!selected.length || indexing || indexedCount === selected.length}>
               {indexing ? <><Loader2 size={14} className="animate-spin" /> Indexing…</> : <><FileSearch size={14} /> Index selected documents</>}
