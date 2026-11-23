@@ -655,7 +655,7 @@ export default function DocumentAIPage() {
                         setCorrectionText(claim.correction?.corrected_text || claim.text);
                         setCorrectionReason(claim.correction?.reason || "");
                       }}>{claim.correction ? "Edit correction" : "Edit / correct defect"}</button>
-                    )}}
+                    )}
                   </div>
                 ))}
                 {conflicts.map((conflict, index) => (
