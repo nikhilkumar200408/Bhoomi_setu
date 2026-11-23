@@ -123,7 +123,8 @@ async def test_index_ask_cites_real_pages_and_every_quote_is_on_the_page(client)
     r = await ask(client, a, "What is the interest rate per annum?", [d1])
     body = r.json()
     assert r.status_code == 200 and not body["abstained"]
-    assert body["faithfulness_method"] == "verified_claim_ratio"
+    assert body["faithfulness_method"] == "verified_supported_claim_ratio"
+    assert 0 < body["question_coverage_score"] <= 1
     ev = {e["evidence_id"]: e for e in body["evidence"]}
     claim = body["claims"][0]
     e = ev[claim["evidence_ids"][0]]
@@ -145,6 +146,7 @@ async def test_abstains_when_evidence_is_missing_and_validates_input(client):
     await index(client, a, doc)
     body = (await ask(client, a, "What is the vehicle registration penalty?", [doc])).json()
     assert body["abstained"] and body["claims"] == [] and body["evidence"] == [] and body["missing_evidence"]
+    assert body["question_coverage_score"] == 0
     assert (await ask(client, a, "   ", [doc])).status_code == 400
     assert (await ask(client, a, "interest", [unindexed])).status_code == 409
     assert (await client.post("/api/document-ai/qa/ask", json={"question": "x", "document_ids": []}, headers=a)).status_code == 422
