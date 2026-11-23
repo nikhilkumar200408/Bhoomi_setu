@@ -287,3 +287,34 @@ def test_semantic_only_retrieval_is_never_auto_supported():
     assert result["claims"][0]["requires_human_review"] is True
     assert result["evidence"][0]["page_number"] == 3
     assert result["evidence"][0]["verification"]["quote_found_in_source"] is True
+
+
+
+def test_labelled_due_date_conflict_has_verbatim_evidence_and_no_guessed_winner():
+    pages = [
+        {"document_id": "loan-a", "filename": "loan_a.pdf", "page": 2, "source_type": "PDF_TEXT",
+         "text": "The payment due date is 1 March 2026."},
+        {"document_id": "loan-b", "filename": "loan_b.pdf", "page": 4, "source_type": "PDF_TEXT",
+         "text": "The payment due date is 15 March 2026."},
+    ]
+    result = F.analyse(pages, today=F.date(2026, 2, 1))
+    conflicts = [x for x in result["contradictions"] if x["topic"] == "due date"]
+    assert len(conflicts) == 1
+    conflict = conflicts[0]
+    assert conflict["status"] == "OPEN"
+    assert conflict["resolution"]["controlling_document_id"] is None
+    assert conflict["resolution"]["requires_human_review"] is True
+    assert {e["document_id"] for e in conflict["evidence"]} == {"loan-a", "loan-b"}
+    assert all(e["verification"]["quote_found_in_source"] for e in conflict["evidence"])
+    assert "1 March 2026" in conflict["evidence"][0]["quote"] or "1 March 2026" in conflict["evidence"][1]["quote"]
+
+
+def test_labelled_date_conflicts_do_not_compare_different_clauses():
+    pages = [
+        {"document_id": "contract-a", "filename": "contract_a.pdf", "page": 1, "source_type": "PDF_TEXT",
+         "text": "Under Clause 4, the payment due date is 1 March 2026."},
+        {"document_id": "contract-b", "filename": "contract_b.pdf", "page": 1, "source_type": "PDF_TEXT",
+         "text": "Under Clause 9, the payment due date is 15 March 2026."},
+    ]
+    result = F.analyse(pages, today=F.date(2026, 2, 1))
+    assert not [x for x in result["contradictions"] if x["topic"] == "due date"]
