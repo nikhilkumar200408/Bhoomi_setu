@@ -118,3 +118,47 @@ async def test_human_review_decisions_append_audit_history():
     assert len(history["history"]) == 1
     assert history["history"][0]["corrected_value"] == "Alexander Smith"
     assert await compliance_events_collection.count_documents({"review_id": review["_id"]}) == 1
+
+
+
+@pytest.mark.asyncio
+async def test_phase3_dashboard_aggregates_review_and_compliance_signals():
+    from app.routers.compliance import phase3_dashboard
+
+    await seed_document("p3-doc", "sale-deed.pdf", "Owner: Alex. Survey No. 88/2. Signed on 2024-05-01.")
+    await compliance_reviews_collection.insert_one({
+        "_id": "p3-review", "user_id": USER["_id"], "title": "Confirm owner",
+        "source_type": "MANUAL", "document_ids": ["p3-doc"],
+        "status": "PENDING", "evidence": [], "history": [],
+    })
+    await compliance_checklists_collection.insert_one({
+        "_id": "p3-check", "user_id": USER["_id"], "name": "Deed review",
+        "document_ids": ["p3-doc"], "requirements": [
+            {"label": "Signed deed", "status": "FOUND"},
+            {"label": "Mutation record", "status": "MISSING"},
+        ],
+    })
+    result = await phase3_dashboard(USER)
+    assert result["summary"]["indexed_documents"] == 1
+    assert result["summary"]["pending_reviews"] == 1
+    assert result["summary"]["missing_requirements"] == 1
+    assert result["summary"]["confidence"]["total"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_phase3_report_is_pdf_and_excludes_unselected_documents():
+    import fitz
+    from app.routers.compliance import DueDiligenceReportRequest, generate_due_diligence_report
+
+    await seed_document("report-a", "selected-deed.pdf", "Owner: Alex. Survey No. 77/4.")
+    await seed_document("report-b", "private-other.pdf", "Owner: Taylor. Survey No. 99/1.")
+    response = await generate_due_diligence_report(
+        DueDiligenceReportRequest(document_ids=["report-a"], title="Selected property review"), USER
+    )
+    assert response.media_type == "application/pdf"
+    assert response.body.startswith(b"%PDF")
+    pdf = fitz.open(stream=response.body, filetype="pdf")
+    content = "\n".join(page.get_text() for page in pdf)
+    assert "selected-deed.pdf" in content
+    assert "private-other.pdf" not in content
+    assert "IMPORTANT LIMITATIONS" in content

@@ -10,7 +10,9 @@ from datetime import datetime
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
+import fitz
 
 from ..database import (
     documents_collection, docai_pages_collection,
@@ -19,6 +21,7 @@ from ..database import (
 )
 from ..deps import get_current_user, document_scope
 from ..services.docai.errors import DocAIError
+from ..services.docai.intelligence import extract_entities
 
 router = APIRouter(prefix="/api/compliance", tags=["verification-compliance"])
 CHECKLIST_STATUSES = {"FOUND", "MISSING", "NEEDS_VERIFICATION"}
@@ -439,3 +442,144 @@ async def review_history(review_id: str, user: dict = Depends(get_current_user))
         raise HTTPException(404, "Review item not found.")
     await _load_indexed_documents(user, record["document_ids"])
     return {"review_id": review_id, "history": record.get("history", [])}
+
+
+class DueDiligenceReportRequest(BaseModel):
+    document_ids: list[str] = Field(min_length=1, max_length=50)
+    title: str = Field(default="Due Diligence Review", min_length=2, max_length=160)
+
+
+async def _phase3_snapshot(user: dict, ids: Optional[list[str]] = None) -> dict:
+    docs = [d async for d in documents_collection.find(
+        {**document_scope(user), "docai_status": "INDEXED"},
+        {"_id": 1, "filename": 1, "uploaded_at": 1}
+    ).sort("uploaded_at", -1)]
+    accessible = [d["_id"] for d in docs]
+    if ids is not None:
+        requested = list(dict.fromkeys(x.strip() for x in ids if x and x.strip()))
+        if not requested or any(x not in accessible for x in requested):
+            raise HTTPException(404, "One or more selected indexed documents were not found.")
+        accessible = requested
+        docs = [d for d in docs if d["_id"] in accessible]
+    pages = await _load_pages(accessible) if accessible else []
+    intelligence = extract_entities(pages)
+    checklist_query = {"user_id": user["_id"], "document_ids": {"$in": accessible}}
+    checklists = [x async for x in compliance_checklists_collection.find(checklist_query).sort("created_at", -1).limit(100)]
+    rules = [x async for x in compliance_rules_collection.find({"user_id": user["_id"]}).sort("created_at", -1).limit(100)]
+    reviews = [x async for x in compliance_reviews_collection.find(
+        {"document_ids": {"$in": accessible}}).sort("updated_at", -1).limit(300)]
+    req_counts = {"FOUND": 0, "MISSING": 0, "NEEDS_VERIFICATION": 0}
+    for checklist in checklists:
+        for req in checklist.get("requirements", []):
+            if req.get("status") in req_counts:
+                req_counts[req["status"]] += 1
+    review_counts = {status: sum(x.get("status") == status for x in reviews)
+                     for status in ("PENDING", "NEEDS_FURTHER_REVIEW", "ACCEPTED", "REJECTED", "CORRECTED")}
+    fields = intelligence["fields"]
+    confidence = {
+        "total": len(fields),
+        "verified": sum(x["status"] == "VERIFIED" for x in fields),
+        "needs_review": sum(x["status"] == "NEEDS_REVIEW" for x in fields),
+        "uncertain": sum(x["status"] == "UNCERTAIN" for x in fields),
+    }
+    return {
+        "generated_at": _now().isoformat() + "Z",
+        "documents": [{"id": d["_id"], "filename": d.get("filename", "Document")} for d in docs],
+        "summary": {
+            "indexed_documents": len(docs), "indexed_pages": len(pages),
+            "checklists": len(checklists), "custom_rules": len(rules),
+            "pending_reviews": review_counts["PENDING"], "further_review": review_counts["NEEDS_FURTHER_REVIEW"],
+            "completed_reviews": review_counts["ACCEPTED"] + review_counts["REJECTED"] + review_counts["CORRECTED"],
+            "rule_failures": sum(x.get("source_type") == "RULE" and x.get("status") in {"PENDING", "NEEDS_FURTHER_REVIEW"} for x in reviews),
+            "missing_requirements": req_counts["MISSING"],
+            "needs_verification_requirements": req_counts["NEEDS_VERIFICATION"],
+            "confidence": confidence,
+        },
+        "requirement_counts": req_counts, "review_counts": review_counts,
+        "checklists": checklists, "rules": rules, "reviews": reviews,
+        "fields": fields, "visual_review": intelligence["visual_review"],
+        "notice": "Offline mode is a read-only copy of previously indexed analysis. It does not run OCR, AI inference, retrieval or live verification. Findings require source inspection and human review.",
+    }
+
+
+@router.get("/phase3/dashboard")
+async def phase3_dashboard(user: dict = Depends(get_current_user)):
+    return await _phase3_snapshot(user)
+
+
+def _build_due_diligence_pdf(snapshot: dict, title: str) -> bytes:
+    pdf = fitz.open()
+    page = pdf.new_page()
+    y = 52
+
+    def add(text: Any, size: float = 9, bold: bool = False):
+        nonlocal page, y
+        safe = str(text if text is not None else "").encode("latin-1", "replace").decode("latin-1")
+        font = "hebo" if bold else "helv"
+        rect = fitz.Rect(48, y, 548, 790)
+        remaining = page.insert_textbox(rect, safe, fontsize=size, fontname=font, lineheight=1.25)
+        if remaining < 0:
+            page = pdf.new_page()
+            y = 52
+            page.insert_textbox(fitz.Rect(48, y, 548, 790), safe, fontsize=size, fontname=font, lineheight=1.25)
+        y += max(18, (len(safe) // max(35, int(500 / (size * .52))) + 1) * size * 1.3)
+        if y > 740:
+            page = pdf.new_page()
+            y = 52
+
+    add("TRUSTLENS AI", 10, True)
+    add(title, 20, True)
+    add("Evidence-linked due diligence summary", 11)
+    add("Generated: " + snapshot["generated_at"], 8)
+    add("1. REVIEW OVERVIEW", 13, True)
+    summary = snapshot["summary"]
+    for key, label in [
+        ("indexed_documents", "Indexed documents"), ("indexed_pages", "Indexed pages"),
+        ("pending_reviews", "Pending human reviews"), ("further_review", "Further review"),
+        ("completed_reviews", "Completed decisions"), ("rule_failures", "Open rule failures"),
+        ("missing_requirements", "Missing requirements"),
+        ("needs_verification_requirements", "Needs verification"),
+    ]:
+        add(f"{label}: {summary[key]}")
+    add("2. DOCUMENTS IN SCOPE", 13, True)
+    for doc in snapshot["documents"]:
+        add(f"- {doc['filename']} (ID: {doc['id']})")
+    add("3. EXTRACTION CONFIDENCE", 13, True)
+    conf = summary["confidence"]
+    add(f"Total fields: {conf['total']} | High signal: {conf['verified']} | Needs review: {conf['needs_review']} | Uncertain: {conf['uncertain']}")
+    for field in snapshot["fields"][:100]:
+        add(f"{field['filename']} | p.{field['page']} | {field['label']}: {field['value']} | {field['status']} ({field['confidence']:.0%})", 8)
+        add("Source: " + field["quote"], 8)
+    add("4. CHECKLIST EXCEPTIONS", 13, True)
+    for checklist in snapshot["checklists"]:
+        add("Checklist: " + checklist.get("name", "Unnamed"), 9, True)
+        for req in checklist.get("requirements", []):
+            if req.get("status") != "FOUND":
+                add(f"{req.get('status')}: {req.get('label')} - {req.get('message', '')}", 8)
+                for ev in req.get("evidence", [])[:2]:
+                    add(f"Source: {ev.get('filename')} p.{ev.get('page')} | {ev.get('quote', '')}", 8)
+    add("5. HUMAN REVIEW REGISTER", 13, True)
+    for review in snapshot["reviews"][:150]:
+        add(f"{review.get('status')} | {review.get('title')} | {review.get('source_type')}", 8, True)
+        if review.get("description"):
+            add(review["description"], 8)
+        for ev in review.get("evidence", [])[:2]:
+            add(f"Source: {ev.get('filename')} p.{ev.get('page')} | {ev.get('quote', '')}", 8)
+        for event in review.get("history", [])[-3:]:
+            add(f"Decision: {event.get('action')} | {event.get('comment') or 'No comment'}", 8)
+    add("6. VISUAL REVIEW CANDIDATES", 13, True)
+    for item in snapshot["visual_review"][:80]:
+        add(f"{item['filename']} | page {item['page']} | {'; '.join(item.get('signals', []))}", 8)
+    add("IMPORTANT LIMITATIONS", 13, True)
+    add("This report is an evidence-organising aid, not a legal opinion, title certificate, authenticity certificate or guarantee of completeness. Extraction confidence measures text extraction reliability only. Text checks do not authenticate signatures, stamps, seals, handwriting, identity, ownership or legal effect. Missing wording in indexed text does not prove that a document does not exist. A qualified reviewer must inspect original documents and independently verify material facts.", 8)
+    return pdf.tobytes(garbage=4, deflate=True)
+
+
+@router.post("/phase3/reports/due-diligence")
+async def generate_due_diligence_report(payload: DueDiligenceReportRequest, user: dict = Depends(get_current_user)):
+    snapshot = await _phase3_snapshot(user, payload.document_ids)
+    body = _build_due_diligence_pdf(snapshot, payload.title)
+    return Response(content=body, media_type="application/pdf", headers={
+        "Content-Disposition": 'attachment; filename="trustlens-due-diligence-report.pdf"',
+        "Cache-Control": "no-store",
+    })

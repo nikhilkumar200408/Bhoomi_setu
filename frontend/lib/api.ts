@@ -82,3 +82,22 @@ export async function downloadAuthed(path: string, filename: string): Promise<vo
 }
 
 export { API_BASE_URL };
+
+
+export async function downloadAuthedPost(path: string, body: unknown, filename: string): Promise<void> {
+  const token = getToken();
+  const res = await fetch(\`${API_BASE_URL}${path}\`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: \`Bearer ${token}\` } : {}) },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { const data = await res.json(); detail = data.detail || data.error?.message || data.message || JSON.stringify(data); } catch { /* non-JSON */ }
+    throw new ApiError(detail, res.status);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url; anchor.download = filename; document.body.appendChild(anchor);
+  anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+}

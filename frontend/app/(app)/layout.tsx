@@ -13,6 +13,7 @@ import {
   MessageCircle,
   Network,
   ClipboardCheck,
+  LayoutDashboard,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useLanguage, Lang, LANG_LABELS } from "@/lib/language";
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { href: "/chat", key: "ai_chat", icon: MessageCircle, label: "AI Chat" },
   { href: "/intelligence", key: "intelligence", icon: Network, label: "Intelligence" },
   { href: "/compliance", key: "compliance", icon: ClipboardCheck, label: "Verification & Compliance" },
+  { href: "/review-dashboard", key: "review_dashboard", icon: LayoutDashboard, label: "Review Dashboard" },
   { href: "/audit", key: "audit_trail", icon: History },
 ];
 
