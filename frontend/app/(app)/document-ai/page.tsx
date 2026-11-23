@@ -40,6 +40,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export default function DocumentAIPage() {
   const [documents, setDocuments] = useState<Doc[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
+  const [indexedIds, setIndexedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [indexing, setIndexing] = useState(false);
   const [indexMessage, setIndexMessage] = useState("");
@@ -69,7 +70,7 @@ export default function DocumentAIPage() {
     () => documents.filter((doc) => selected.includes(doc.id)),
     [documents, selected]
   );
-  const indexedCount = selectedDocs.filter((doc) => doc.docai_status === "INDEXED").length;
+  const indexedCount = selectedDocs.filter((doc) => indexedIds.includes(doc.id)).length;
 
   function toggleDocument(id: string) {
     setSelected((current) => current.includes(id) ? current.filter((x) => x !== id) : [...current, id]);
@@ -87,7 +88,7 @@ export default function DocumentAIPage() {
       for (let i = 0; i < selected.length; i++) {
         const id = selected[i];
         const doc = documents.find((item) => item.id === id);
-        if (doc?.docai_status === "INDEXED") continue;
+        if (indexedIds.includes(id)) continue;
         setIndexMessage(`Indexing ${i + 1} of ${selected.length}: ${doc?.filename ?? "document"}`);
         const started = await api.post<{ indexing_job_id: string }>(`/api/document-ai/documents/${id}/index`, {});
         let completed = false;
@@ -98,6 +99,7 @@ export default function DocumentAIPage() {
           if (job.status === "FAILED") throw new Error(job.error?.message || "Document indexing failed.");
         }
         if (!completed) throw new Error(`Indexing timed out for ${doc?.filename ?? "document"}.`);
+        setIndexedIds((current) => current.includes(id) ? current : [...current, id]);
       }
       setIndexMessage("All selected documents are indexed and ready for evidence search.");
       await loadDocuments();
@@ -169,14 +171,14 @@ export default function DocumentAIPage() {
               <div className="max-h-[390px] space-y-2 overflow-y-auto">
                 {documents.map((doc) => {
                   const checked = selected.includes(doc.id);
-                  const indexed = doc.docai_status === "INDEXED";
+                  const indexed = indexedIds.includes(doc.id);
                   return (
                     <label key={doc.id} className={`flex cursor-pointer items-start gap-3 rounded-card border p-3 transition-colors ${checked ? "border-accent bg-accent-bg/50" : "border-line hover:bg-slate-50"}`}>
                       <input type="checkbox" checked={checked} onChange={() => toggleDocument(doc.id)} className="mt-1 accent-blue-600" />
                       <span className="min-w-0 flex-1">
                         <span className="block break-words text-sm font-medium text-navy">{doc.filename}</span>
                         <span className="mt-1 flex items-center gap-1.5 text-[11px] text-ink/50">
-                          {indexed ? <><CheckCircle2 size={12} className="text-verified" /> Indexed</> : <><FileSearch size={12} /> {doc.docai_status || "Not indexed"}</>}
+                          {indexed ? <><CheckCircle2 size={12} className="text-verified" /> Indexed</> : <><FileSearch size={12} /> Ready to index</>}
                         </span>
                       </span>
                     </label>
