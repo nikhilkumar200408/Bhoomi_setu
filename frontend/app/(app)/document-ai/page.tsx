@@ -17,7 +17,7 @@ type Doc = {
 };
 type Job = { status: string; pages_total?: number; pages_processed?: number; error?: { message?: string } };
 type Evidence = {
-  evidence_id: string; filename: string; page_number: number; quote: string;
+  evidence_id: string; filename: string; page_number: number; quote: string; source_url?: string;
   relation?: string; verification?: { quote_found_in_source?: boolean };
 };
 type Claim = {
