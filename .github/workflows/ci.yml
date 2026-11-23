@@ -35,7 +35,7 @@ jobs:
       - name: Install system OCR dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y tesseract-ocr tesseract-ocr-eng
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-hin tesseract-ocr-kan
           tesseract --version
           tesseract --list-langs
       - name: Install backend test dependencies
