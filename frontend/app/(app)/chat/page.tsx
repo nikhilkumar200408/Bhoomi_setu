@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Bot, Check, ChevronDown, FileText, Loader2, MessageCircle, Plus, Send, ShieldCheck, Sparkles, Trash2, User, X } from "lucide-react";
+import { AlertCircle, Bot, BookOpen, Check, ChevronDown, ExternalLink, FileSearch, FileText, Loader2, MessageCircle, Plus, Send, ShieldCheck, Sparkles, Trash2, User, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { LoadingState } from "@/components/ui/States";
@@ -46,6 +46,8 @@ export default function ChatPage() {
 
   const indexedDocs = useMemo(() => documents.filter(d => d.docai_status === "INDEXED"), [documents]);
   const selectedDocs = useMemo(() => indexedDocs.filter(d => selectedIds.includes(d.id)), [indexedDocs, selectedIds]);
+  const latestAssistantMessage = useMemo(() => [...messages].reverse().find(message => message.role === "assistant" && message.answer), [messages]);
+  const latestEvidence = latestAssistantMessage?.answer?.evidence ?? [];
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
@@ -157,8 +159,8 @@ export default function ChatPage() {
   if (loading) return <LoadingState label="Loading TrustLens AI Chat…" />;
 
   return (
-    <div className="flex min-h-[calc(100vh-7.5rem)] overflow-hidden rounded-2xl border border-line bg-white shadow-card">
-      <aside className="hidden w-72 shrink-0 flex-col border-r border-line bg-slate-50/80 md:flex">
+    <div className="grid min-h-[calc(100vh-8rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_18px_55px_-35px_rgba(15,35,65,0.35)] md:grid-cols-[230px_minmax(0,1fr)] xl:grid-cols-[230px_minmax(0,1fr)_292px]">
+      <aside className="hidden min-h-[680px] flex-col border-r border-slate-200 bg-[#f7f9fc] md:flex">
         <div className="flex items-center justify-between border-b border-line p-4">
           <div><p className="font-semibold text-navy">Conversations</p><p className="text-xs text-ink/45">Your saved RAG chats</p></div>
           <Button size="sm" onClick={newChat}><Plus size={14}/> New</Button>
@@ -180,7 +182,7 @@ export default function ChatPage() {
         </div>
       </aside>
 
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section className="flex min-h-[680px] min-w-0 flex-col">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-bg text-accent"><Bot size={21}/></div>
@@ -279,6 +281,61 @@ export default function ChatPage() {
           <div className="mx-auto mt-2 flex max-w-4xl flex-wrap items-center justify-between gap-2 text-[10px] text-ink/40"><span>Enter to send · Shift + Enter for new line · Max 2,000 characters</span><span>{selectedIds.length} document(s) in scope · Answers cite source passages</span></div>
         </form>
       </section>
+
+      <aside className="hidden min-h-[680px] flex-col border-l border-slate-200 bg-[#fbfcfe] xl:flex">
+        <div className="border-b border-slate-200 px-4 py-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-[#142744]"><FileSearch size={16} className="text-[#315b88]"/> Sources & context</div>
+          <p className="mt-1 text-[11px] leading-5 text-slate-500">Evidence retrieved for your latest answer.</p>
+        </div>
+        <div className="flex-1 space-y-5 overflow-y-auto p-4">
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Search scope</p>
+              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800">{selectedDocs.length} selected</span>
+            </div>
+            {selectedDocs.length ? <div className="space-y-2">
+              {selectedDocs.slice(0, 5).map(doc => <div key={doc.id} className="flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-2.5">
+                <FileText size={14} className="mt-0.5 shrink-0 text-[#527397]"/>
+                <span className="min-w-0 break-all text-[11px] leading-4 text-slate-700">{doc.filename}</span>
+              </div>)}
+              {selectedDocs.length > 5 && <p className="text-[10px] text-slate-500">+ {selectedDocs.length - 5} more documents in scope</p>}
+            </div> : <p className="rounded-xl border border-dashed border-slate-300 p-3 text-xs leading-5 text-slate-500">Select indexed documents to give the assistant a source to search.</p>}
+          </div>
+
+          <div className="border-t border-slate-200 pt-4">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Retrieved evidence</p>
+              <span className="text-[10px] tabular-nums text-slate-400">{latestEvidence.length} passages</span>
+            </div>
+            {latestEvidence.length ? <div className="space-y-3">
+              {latestEvidence.slice(0, 6).map(ev => <article key={ev.evidence_id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_2px_10px_-8px_rgba(15,35,65,0.3)]">
+                <div className="flex items-start gap-2">
+                  <BookOpen size={13} className="mt-0.5 shrink-0 text-[#527397]"/>
+                  <p className="min-w-0 flex-1 break-words text-[11px] font-semibold leading-4 text-[#1c3555]">{ev.filename}</p>
+                  <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-1 text-[9px] font-medium text-slate-600">p. {ev.page_number}</span>
+                </div>
+                <p className="mt-2 line-clamp-5 text-[11px] leading-5 text-slate-600">“{ev.quote}”</p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className={`text-[9px] font-medium ${ev.verification?.quote_found_in_source ? "text-emerald-700" : "text-amber-700"}`}>
+                    {ev.verification?.quote_found_in_source ? "Quote verified" : "Verification unavailable"}
+                  </span>
+                  {ev.source_url && <a href={ev.source_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[10px] font-medium text-[#315b88] hover:underline">Open <ExternalLink size={10}/></a>}
+                </div>
+              </article>)}
+            </div> : <div className="rounded-xl border border-dashed border-slate-300 p-3">
+              <p className="text-xs font-medium text-slate-600">No evidence to display yet</p>
+              <p className="mt-1 text-[11px] leading-5 text-slate-500">Ask a question to see the exact passages and page references used in the answer.</p>
+            </div>}
+          </div>
+        </div>
+        <div className="border-t border-slate-200 p-4">
+          <div className="flex items-start gap-2 rounded-xl bg-[#eef3f8] p-3">
+            <ShieldCheck size={14} className="mt-0.5 shrink-0 text-[#315b88]"/>
+            <p className="text-[10px] leading-4 text-slate-600">Answers are grounded in retrieved sources. Always review the original document before acting.</p>
+          </div>
+          <a href="/document-ai" className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#315b88] hover:underline">Open Document Intelligence <ExternalLink size={12}/></a>
+        </div>
+      </aside>
     </div>
   );
 }
