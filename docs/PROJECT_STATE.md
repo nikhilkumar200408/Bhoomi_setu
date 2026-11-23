@@ -1,6 +1,6 @@
 # Project state
 
-**Bhoomi_setu** is the platform; **BhoomiTrust AI** is the existing land-record module. The goal is to add a trustworthy Document AI layer (multi-document ingestion, OCR, cited Q&A, quote/claim verification, contradiction and amendment analysis, human review) without replacing or breaking the land-record application.
+**Bhoomi_setu** is the platform repository. Its existing BhoomiTrust workflows are maintained as a separate application area. The **Document AI module is domain-independent**: it is designed to process general business and institutional documents such as banking and loan agreements, insurance policies, vendor/legal contracts, regulatory circulars, public policies, and other supported PDFs. It must not assume that uploaded documents are land records. The goal is to add multi-document ingestion, OCR, cited Q&A, quote/claim verification, contradiction and amendment analysis, and human review without breaking existing platform workflows.
 
 ## Repository and architecture
 
@@ -38,8 +38,8 @@ See `docs/IMPLEMENTATION_PROGRESS.md` for the detailed status and unverified tes
 ## Local inference direction
 
 - Document AI must not require external AI inference APIs or cloud API keys.
-- Planned local runtime: Ollama; initial chat model candidate `qwen3:4b`; initial embedding candidate `bge-m3`.
-- These are candidate models, not yet integrated or benchmarked.
+- Local runtime: Ollama. The first chat integration targets the already-installed `llama3.2` model; BGE-M3 remains the planned embedding model.
+- Ollama drafting is opt-in, runs locally, and returns a clearly marked unverified draft only. It does not replace backend claims, citations, contradiction results, abstention, or faithfulness scoring. Runtime inference and safety tests still need to be run.
 - For a backend running in Docker on macOS, configure the Ollama host explicitly (often `http://host.docker.internal:11434`); container `localhost` is not the Mac host.
 - Do not expose the Ollama service publicly. A public deployment needs a separately secured inference host.
 - Model downloads require internet initially; local inference can operate offline after weights are available.
