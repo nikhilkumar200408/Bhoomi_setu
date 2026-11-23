@@ -22,6 +22,41 @@ type Answer = {
 type Message = { id: string; role: "user" | "assistant"; content: string; answer?: Answer; created_at: string };
 type Session = { id: string; title: string; document_ids: string[]; updated_at: string; message_count: number; preview?: string };
 
+function renderHighlightedAnswer(content: string, claims: Claim[]) {
+  const matches: { start: number; end: number; status: string }[] = [];
+
+  // Highlight only claim text supplied by the evidence analysis, never guessed keywords.
+  for (const claim of [...claims].sort((a, b) => b.text.length - a.text.length)) {
+    if (!claim.text?.trim()) continue;
+    const start = content.toLocaleLowerCase().indexOf(claim.text.trim().toLocaleLowerCase());
+    if (start < 0) continue;
+    const end = start + claim.text.trim().length;
+    if (matches.some(match => start < match.end && end > match.start)) continue;
+    matches.push({ start, end, status: claim.status });
+  }
+
+  if (!matches.length) return content;
+  matches.sort((a, b) => a.start - b.start);
+
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  matches.forEach((match, index) => {
+    if (match.start > cursor) parts.push(content.slice(cursor, match.start));
+    const status = match.status.toUpperCase();
+    const style = status === "SUPPORTED"
+      ? "rounded-[2px] bg-[linear-gradient(transparent_66%,rgba(211,177,103,0.34)_66%)] font-semibold text-[#26364d]"
+      : status === "PARTIALLY_SUPPORTED" || status === "INSUFFICIENT_EVIDENCE"
+        ? "rounded-[2px] underline decoration-dashed decoration-[#c49a52] decoration-[1.5px] underline-offset-[4px]"
+        : status === "CONTRADICTED"
+          ? "rounded-[2px] underline decoration-wavy decoration-[#c77b70] decoration-[1.5px] underline-offset-[4px]"
+          : "font-medium underline decoration-[#b9c5d5] decoration-[1px] underline-offset-[4px]";
+    parts.push(<span key={`claim-${index}`} className={style} title={status.replaceAll("_", " ").toLowerCase()}>{content.slice(match.start, match.end)}</span>);
+    cursor = match.end;
+  });
+  if (cursor < content.length) parts.push(content.slice(cursor));
+  return parts;
+}
+
 function timeLabel(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -242,7 +277,7 @@ export default function ChatPage() {
               <div className={`min-w-0 max-w-[min(92%,780px)] rounded-2xl p-4 ${message.role === "user" ? "bg-[#173B70] text-white" : "border border-line bg-white text-navy shadow-sm"}`}>
                 {message.role === "user" ? <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p> : (
                   <div className="space-y-3">
-                    <div className="whitespace-pre-wrap break-words text-sm leading-7">{message.answer?.abstained && <span className="mb-2 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800"><AlertCircle size={12}/> Insufficient evidence</span>}{message.content}</div>
+                    <div className="whitespace-pre-wrap break-words text-sm leading-7">{message.answer?.abstained && <span className="mb-2 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800"><AlertCircle size={12}/> Insufficient evidence</span>}{renderHighlightedAnswer(message.content, message.answer?.claims || [])}</div>
                     {message.answer?.llm_assistance?.draft && <div className="rounded-lg border border-violet-100 bg-violet-50/60 p-3"><p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-violet-700">Optional AI draft · unverified</p><p className="whitespace-pre-wrap text-sm text-violet-950">{message.answer.llm_assistance.draft}</p></div>}
                     {!!message.answer?.evidence?.length && <div className="border-t border-line pt-3">
                       <button onClick={() => setShowSources(current => ({ ...current, [message.id]: !current[message.id] }))} className="flex items-center gap-2 text-xs font-semibold text-accent"><FileText size={13}/> {message.answer.evidence.length} source passage(s)<ChevronDown size={13}/></button>
