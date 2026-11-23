@@ -77,6 +77,7 @@ export default function DocumentAIPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [indexedIds, setIndexedIds] = useState<string[]>([]);
   const [structures, setStructures] = useState<Record<string, DocumentStructure>>({});
+  const [reviewOpen, setReviewOpen] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [indexing, setIndexing] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -398,57 +399,6 @@ export default function DocumentAIPage() {
 
   return (
     <div className="space-y-6">
-      {/* System Novelty */}
-      <section className="rounded-2xl border border-accent/20 bg-white p-5 space-y-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-accent">
-            System Differentiators
-          </p>
-          <h2 className="mt-1 text-xl font-semibold text-navy">Novelty Points</h2>
-          <p className="mt-1 text-sm text-ink/60">
-            Evidence-first document intelligence designed to reduce unsupported answers and missed contradictions.
-          </p>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            {
-              title: "Zero-Guessing Answer Gate",
-              description: "Answers are grounded in retrieved document evidence. When proof is missing, the system can abstain instead of inventing information.",
-            },
-            {
-              title: "Cross-Document Contradiction Detection",
-              description: "Identifies conflicting dates, amounts, clauses and conditions across selected documents, with evidence for comparison.",
-            },
-            {
-              title: "Exact Source Citations",
-              description: "Connects answers to document names, page numbers and supporting source passages for verification.",
-            },
-            {
-              title: "Amendment & Version Tracking",
-              description: "Tracks amendment relationships between documents to help identify changes and superseded provisions.",
-            },
-            {
-              title: "OCR Quality & Human Review",
-              description: "Evaluates extracted page content and flags low-confidence OCR text for human verification instead of silently correcting it.",
-            },
-            {
-              title: "Hindi Q&A with Local AI",
-              description: "Supports Hindi queries and Hindi explanations using a locally hosted Ollama model, without relying on a paid AI API.",
-            },
-          ].map((item) => (
-            <div key={item.title} className="rounded-xl border border-line bg-paper/60 p-4">
-              <h3 className="text-sm font-semibold text-navy">{item.title}</h3>
-              <p className="mt-2 text-xs leading-5 text-ink/65">{item.description}</p>
-            </div>
-          ))}
-        </div>
-
-        <p className="text-xs text-ink/55">
-          Domain-independent: suitable for banking documents, insurance policies, contracts,
-          government circulars, regulatory documents and other complex PDFs.
-        </p>
-      </section>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-accent text-xs font-semibold uppercase tracking-[0.16em]">
@@ -477,7 +427,7 @@ export default function DocumentAIPage() {
         <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
           <div>
             <p className="text-sm font-semibold text-navy">Add documents to this workspace</p>
-            <p className="mt-1 text-xs text-ink/50">Upload PDFs or scanned JPG/PNG files directly. This does not run the legacy land-record digitization workflow.</p>
+            <p className="mt-1 text-xs text-ink/50">Upload a file or add a public webpage. Both enter the same extraction, indexing and evidence-search pipeline.</p>
           </div>
           <label className={`inline-flex cursor-pointer items-center gap-2 rounded-card bg-accent px-4 py-2.5 text-sm font-medium text-white ${uploading ? "pointer-events-none opacity-60" : "hover:opacity-90"}`}>
             {uploading ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />}
@@ -496,10 +446,10 @@ export default function DocumentAIPage() {
               className="min-w-[220px] flex-1 rounded-card border border-line bg-white px-3 py-2 text-sm text-navy"
               disabled={importingWeb} />
             <Button type="button" variant="secondary" onClick={() => void importWebpage()} disabled={importingWeb || !webUrl.trim()}>
-              {importingWeb ? <><Loader2 size={14} className="animate-spin" /> Importing…</> : "Import webpage"}
+              {importingWeb ? <><Loader2 size={14} className="animate-spin" /> Adding source…</> : "Add webpage to pipeline"}
             </Button>
           </div>
-          <p className="w-full text-[11px] text-ink/45">Public HTTPS pages only. The host must be administrator-allowlisted; robots.txt and network safety checks are enforced.</p>
+          <p className="w-full text-[11px] text-ink/45">Web pages are safely fetched, saved as traceable sources, then processed with the same Index selected documents action. Public HTTPS and administrator allowlisting are required.</p>
         </CardContent>
       </Card>
 
@@ -518,15 +468,23 @@ export default function DocumentAIPage() {
                   const checked = selected.includes(doc.id);
                   const indexed = isIndexed(doc);
                   return (
-                    <label key={doc.id} className={`flex cursor-pointer items-start gap-3 rounded-card border p-3 transition-colors ${checked ? "border-accent bg-accent-bg/50" : "border-line hover:bg-slate-50"}`}>
-                      <input type="checkbox" checked={checked} onChange={() => toggleDocument(doc.id)} className="mt-1 accent-blue-600" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block break-words text-sm font-medium text-navy">{doc.filename}</span>
-                        <span className="mt-1 flex items-center gap-1.5 text-[11px] text-ink/50">
-                          {indexed ? <><CheckCircle2 size={12} className="text-verified" /> Indexed</> : <><FileSearch size={12} /> Ready to index</>}
+                    <div key={doc.id} className="space-y-1.5">
+                      <label className={`flex cursor-pointer items-start gap-3 rounded-card border p-3 transition-colors ${checked ? "border-accent bg-accent-bg/50" : "border-line hover:bg-slate-50"}`}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleDocument(doc.id)} className="mt-1 accent-blue-600" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block break-words text-sm font-medium text-navy">{doc.filename}</span>
+                          <span className="mt-1 flex items-center gap-1.5 text-[11px] text-ink/50">
+                            {indexed ? <><CheckCircle2 size={12} className="text-verified" /> Indexed</> : <><FileSearch size={12} /> Ready to index</>}
+                          </span>
                         </span>
-                      </span>
-                    </label>
+                      </label>
+                      {structures[doc.id] && (
+                        <button type="button" onClick={() => setReviewOpen((current) => ({ ...current, [doc.id]: !current[doc.id] }))}
+                          className="ml-8 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-ink/55 transition hover:bg-slate-100 hover:text-navy">
+                          <FileSearch size={12} /> {reviewOpen[doc.id] ? "Hide structure & quality" : "Review extracted structure & quality"}
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -608,11 +566,11 @@ export default function DocumentAIPage() {
         <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Question coverage</p><p className="mt-1 text-2xl font-semibold text-navy">{answer?.question_coverage_score == null ? "—" : `${Math.round(answer.question_coverage_score * 100)}%`}</p><p className="text-xs text-ink/45">Question terms found in returned evidence</p></CardContent></Card>
       </div>
 
-      {selectedDocs.some((doc) => structures[doc.id]) && (
+      {selectedDocs.some((doc) => structures[doc.id] && reviewOpen[doc.id]) && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <FileSearch size={17} /> Extracted document structure & quality review
+              <FileSearch size={17} /> Document structure & quality review
             </CardTitle>
             <p className="text-xs text-ink/55">
               Reconstructed sections, detected tables and OCR quality by page.
@@ -620,7 +578,7 @@ export default function DocumentAIPage() {
             </p>
           </CardHeader>
           <CardContent className="space-y-5">
-            {selectedDocs.filter((doc) => structures[doc.id]).map((doc) => {
+            {selectedDocs.filter((doc) => structures[doc.id] && reviewOpen[doc.id]).map((doc) => {
               const structure = structures[doc.id];
               return (
                 <div key={doc.id} className="space-y-4 border-b border-line pb-5 last:border-0">
