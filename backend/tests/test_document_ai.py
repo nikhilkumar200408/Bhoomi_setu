@@ -7,7 +7,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app import models
 from app.auth import hash_password
-from app.database import users_collection
+from app.database import users_collection, chat_sessions_collection
 from app.main import app
 from app.services.docai import facts as F
 from app.services.docai import qa
@@ -503,3 +503,56 @@ async def test_webpage_import_is_disabled_until_admin_allowlist_is_configured(cl
     )
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "WEB_IMPORT_DISABLED"
+
+
+# ------------------------------------------------------------------ persistent RAG chat
+@pytest.mark.asyncio
+async def test_chat_persists_evidence_backed_turns_and_contextual_followups(client):
+    a = await hdr(client, "op_a")
+    doc = await upload_pdf(client, a, "loan_agreement.pdf", BASE)
+    await index(client, a, doc)
+
+    first = await client.post("/api/chat/messages", headers=a, json={
+        "question": "What is the interest rate?",
+        "document_ids": [doc],
+        "language": "en",
+    })
+    assert first.status_code == 200, first.text
+    body = first.json()
+    session_id = body["session_id"]
+    assert body["answer"]["evidence"]
+    assert body["assistant_message"]["answer"]["evidence"][0]["verification"]["quote_found_in_source"]
+
+    followup = await client.post("/api/chat/messages", headers=a, json={
+        "session_id": session_id,
+        "question": "What about its repayment period?",
+        "document_ids": [doc],
+        "language": "en",
+    })
+    assert followup.status_code == 200, followup.text
+    assert followup.json()["answer"]["contextual_follow_up"] is True
+
+    detail = await client.get(f"/api/chat/sessions/{session_id}", headers=a)
+    assert detail.status_code == 200
+    assert len(detail.json()["messages"]) == 4
+    assert detail.json()["messages"][-1]["answer"]["evidence"]
+
+    listing = await client.get("/api/chat/sessions", headers=a)
+    assert listing.status_code == 200
+    assert listing.json()["items"][0]["id"] == session_id
+
+
+@pytest.mark.asyncio
+async def test_chat_sessions_are_private_and_delete_is_owner_scoped(client):
+    a, b = await hdr(client, "op_a"), await hdr(client, "op_b")
+    doc = await upload_pdf(client, a, "loan_agreement.pdf", BASE)
+    await index(client, a, doc)
+    created = await client.post("/api/chat/messages", headers=a, json={
+        "question": "What is the interest rate?", "document_ids": [doc]
+    })
+    session_id = created.json()["session_id"]
+
+    assert (await client.get(f"/api/chat/sessions/{session_id}", headers=b)).status_code == 404
+    assert (await client.delete(f"/api/chat/sessions/{session_id}", headers=b)).status_code == 404
+    assert (await client.delete(f"/api/chat/sessions/{session_id}", headers=a)).status_code == 204
+    assert (await client.get(f"/api/chat/sessions/{session_id}", headers=a)).status_code == 404
