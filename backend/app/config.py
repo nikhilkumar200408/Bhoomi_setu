@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # Local Document AI inference is opt-in and never calls a cloud provider.
     OLLAMA_ENABLED: bool = False
     OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_CHAT_MODEL: str = "qwen3:4b"
+    OLLAMA_CHAT_MODEL: str = "llama3.2"
     OLLAMA_EMBEDDING_MODEL: str = "bge-m3"
     OLLAMA_TIMEOUT_SECONDS: int = 120
     OLLAMA_NUM_CTX: int = 4096
