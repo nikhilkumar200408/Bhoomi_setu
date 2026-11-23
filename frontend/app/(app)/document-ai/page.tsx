@@ -42,9 +42,9 @@ type CalculationResult = { formula: string; working: string; notice: string; cal
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function highlightImportantText(value: string) {
-  const parts = value.split(/(interest rate|processing fee|overdue charges?|repayment|maturity|effective date|penalty|eligibility|sanction|₹\s?[\d,]+|\\b\d+(?:\.\d+)?\s?%|\\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\\b)/gi);
-  return parts.map((part, index) =>
-    /^(interest rate|processing fee|overdue charges?|repayment|maturity|effective date|penalty|eligibility|sanction|₹\s?[\d,]+|\\b\d+(?:\.\d+)?\s?%|\\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\\b)$/i.test(part)
+  const pattern = /(interest rate|processing fee|overdue charges?|repayment|maturity|effective date|penalty|eligibility|sanction|₹\s?[\d,]+|\b\d+(?:\.\d+)?\s?%|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b)/gi;
+  return value.split(pattern).map((part, index) =>
+    pattern.test(part)
       ? <mark key={index} className="rounded bg-amber-100 px-1 text-amber-950">{part}</mark>
       : <span key={index}>{part}</span>
   );
