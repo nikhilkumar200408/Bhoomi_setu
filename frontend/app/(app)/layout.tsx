@@ -11,6 +11,7 @@ import {
   LogOut,
   BrainCircuit,
   MessageCircle,
+  Network,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useLanguage, Lang, LANG_LABELS } from "@/lib/language";
@@ -19,6 +20,7 @@ import { LoadingState } from "@/components/ui/States";
 const NAV_ITEMS = [
   { href: "/document-ai", key: "document_ai", icon: BrainCircuit },
   { href: "/chat", key: "ai_chat", icon: MessageCircle, label: "AI Chat" },
+  { href: "/intelligence", key: "intelligence", icon: Network, label: "Intelligence" },
   { href: "/audit", key: "audit_trail", icon: History },
 ];
 
