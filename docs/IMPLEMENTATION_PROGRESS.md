@@ -17,8 +17,8 @@ Status key: Done, Partial, Not started, Not verified. Updated 2026-11-23 after t
 | Area | Status | Notes |
 |---|---|---|
 | Universal page extraction foundation | Partial | Native PDF text plus layout blocks and PDF-point bounding boxes; low-text pages fall back to Tesseract OCR with line boxes and confidence metadata |
-| Table extraction | Partial | Native PDF table detection is attempted through PyMuPDF when supported; OCR table reconstruction remains pending and all table results need fixtures |
-| Multi-page documents | Partial | Page boundaries and provenance retained; cross-page clause/section reconstruction is not yet implemented |
+| Table extraction | Partial | Native PDF table detection plus conservative adjacent-page table continuation when exact non-empty headers match; OCR table reconstruction and real-document fixtures remain pending |
+| Multi-page documents | Partial | Clause-like sections are grouped across pages with page-level source spans; grouping is heuristic and does not rewrite source-page text |
 | Extraction quality metadata | Partial | Text/OCR method, character/word counts, OCR confidence, quality flags and warnings are stored with indexed pages; confidence is not a truth score |
 | BM25 lexical retrieval | Done in code | No dense vectors yet |
 | Cross-document Q&A | Partial | Extractive source passages, not LLM-generated answers |
@@ -70,7 +70,7 @@ Still not verified:
 ## Next phases
 
 1. **Local LLM foundation:** optional Ollama client and safe unverified-draft response; source-backed QA remains authoritative. Focused tests passed before ingestion changes.
-2. **Universal document ingestion:** foundation implemented partially (native layout blocks, page coordinates, OCR line provenance, metadata and optional native table detection). Next: reliable table fixtures, multi-page clause reconstruction, scanned-table handling and evaluation on varied PDFs.
+2. **Universal document ingestion:** foundation implemented partially (native layout blocks, page coordinates, OCR line provenance, metadata and optional native table detection). Next: OCR table reconstruction, table/section evaluation on representative banking, insurance and contract PDFs, and stronger reading-order validation.
 3. **BGE-M3 embeddings and hybrid retrieval:** combine lexical BM25 and vector retrieval; evaluate against multi-domain test packs.
 4. **Zero-guessing verification:** sentence/claim-level evidence mapping, exact quote verification, conservative abstention, and calibrated reporting.
 5. **Document intelligence:** improve cross-document contradictions, amendment chains, effective dates, and current-version reasoning with multi-domain fixtures.
