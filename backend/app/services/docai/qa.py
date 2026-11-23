@@ -7,9 +7,9 @@ from . import facts as F
 from .nlp import bm25_rank, sentence_spans, tokens
 from .embeddings import reciprocal_rank_fusion
 
-MIN_COVERAGE = 0.5      # share of question terms a passage must contain to be used as evidence
+MIN_COVERAGE = 0.5      # upper bound; long multi-part questions use an adaptive threshold
 PARTIAL_BELOW = 0.8     # coverage below this -> PARTIALLY_SUPPORTED
-MAX_CLAIMS = 3
+MAX_CLAIMS = 5
 FAITHFULNESS_METHOD = "verified_claim_ratio"
 
 
@@ -75,7 +75,7 @@ def answer_question(question: str, pages: List[dict], doc_ids: List[str], includ
             p = c["page"]
             key = (p["document_id"], p["page"], c["start"], c["end"])
             coverage = len(set(q_terms) & set(c["tokens"])) / len(q_terms)
-            if coverage >= MIN_COVERAGE and score > 0:
+            # Long comparison questions contain several independent topics. A fixed 50%\n            # term-overlap gate rejects every individual clause in those questions. Require\n            # at least two matching terms (or 50% for very short questions), while keeping\n            # BM25 ranking and verbatim quote verification as the evidence safeguards.\n            min_coverage = min(MIN_COVERAGE, max(0.15, 2.0 / len(q_terms)))\n            if coverage >= min_coverage and score > 0:
                 lexical_scores[key] = (score, coverage)
         bm25_ranking = [key for key, _ in sorted(lexical_scores.items(), key=lambda item: (-item[1][0], item[0]))[:50]]
     if vector_scores:
