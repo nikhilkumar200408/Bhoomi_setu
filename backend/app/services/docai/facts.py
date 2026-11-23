@@ -251,7 +251,8 @@ def _annotate_amendment_chains(amendments: List[dict]) -> None:
         for item in eligible:
             predecessor = incoming.get(item["base_document_id"])
             successor = outgoing.get(item["amending_document_id"])
-            if predecessor and predecessor is not item and predecessor.get("status") == "ACTIVE":
+            if (item.get("status") == "ACTIVE" and predecessor and predecessor is not item
+                    and predecessor.get("status") == "ACTIVE"):
                 predecessor["status"] = "SUPERSEDED"
             item["previous_amendment_id"] = predecessor.get("amendment_id") if predecessor else None
             item["successor_amendment_ids"] = (
