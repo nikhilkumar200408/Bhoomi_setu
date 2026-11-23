@@ -108,16 +108,26 @@ def fetch_public_page(url: str, allowed_domains: str) -> dict:
     try:
         with httpx.Client(headers={"User-Agent": USER_AGENT, "Accept": "text/html"},
                           timeout=15.0, follow_redirects=False) as client:
-            response = client.get(url)
-            if response.is_redirect:
-                raise WebImportError("Redirects are blocked. Import the final HTTPS URL directly.")
-            response.raise_for_status()
-            content_type = response.headers.get("content-type", "").lower()
-            if "text/html" not in content_type:
-                raise WebImportError("The URL did not return an HTML webpage.")
-            if len(response.content) > MAX_RESPONSE_BYTES:
-                raise WebImportError("The webpage exceeds the 2 MB import limit.")
-            html = response.content.decode(response.encoding or "utf-8", errors="replace")
+            with client.stream("GET", url) as response:
+                if response.is_redirect:
+                    raise WebImportError("Redirects are blocked. Import the final HTTPS URL directly.")
+                response.raise_for_status()
+                content_type = response.headers.get("content-type", "").lower()
+                if "text/html" not in content_type:
+                    raise WebImportError("The URL did not return an HTML webpage.")
+                declared_size = response.headers.get("content-length")
+                if declared_size and int(declared_size) > MAX_RESPONSE_BYTES:
+                    raise WebImportError("The webpage exceeds the 2 MB import limit.")
+                chunks = []
+                total = 0
+                for chunk in response.iter_bytes():
+                    total += len(chunk)
+                    if total > MAX_RESPONSE_BYTES:
+                        raise WebImportError("The webpage exceeds the 2 MB import limit.")
+                    chunks.append(chunk)
+                html_bytes = b"".join(chunks)
+                encoding = response.encoding or "utf-8"
+                html = html_bytes.decode(encoding, errors="replace")
     except WebImportError:
         raise
     except httpx.HTTPError as exc:
