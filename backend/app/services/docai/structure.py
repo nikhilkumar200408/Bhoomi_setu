@@ -20,69 +20,71 @@ def _clean(value: Any) -> str:
 
 
 def _lines(page: dict) -> List[str]:
-    # Prefer the original page text; layout blocks are metadata and may omit content.
+    # Layout blocks retain reading-order line groups even when page text is normalized.
+    blocks = page.get("layout_blocks") or []
+    block_lines = [str(block.get("text", "")).strip() for block in blocks if str(block.get("text", "")).strip()]
+    if block_lines:
+        return block_lines
     return [line.strip() for line in str(page.get("text", "")).splitlines() if line.strip()]
 
 
 def reconstruct_sections(pages: List[dict]) -> List[dict]:
-    """Group clauses/paragraphs across pages while retaining exact page fragments.
-
-    The grouping is deliberately conservative: only explicit clause-like headings
-    start a new section. Page fragments are never rewritten or used as citations.
-    """
+    """Group clause-like sections across pages while retaining exact page fragments."""
     ordered = sorted(pages, key=lambda p: (str(p.get("document_id", "")), int(p.get("page", 0))))
     sections: List[dict] = []
     current = None
+    active_document = None
+    span_page = None
+    span_lines: List[str] = []
+
+    def flush_span():
+        nonlocal span_page, span_lines
+        if current is not None and span_page is not None and span_lines:
+            fragment = "\\n".join(span_lines)
+            current["source_spans"].append({
+                "document_id": current["document_id"],
+                "filename": current["filename"],
+                "page": span_page,
+                "quote": fragment,
+            })
+            if span_page not in current["page_numbers"]:
+                current["page_numbers"].append(span_page)
+        span_page, span_lines = None, []
+
+    def flush_section():
+        nonlocal current
+        flush_span()
+        if current is not None:
+            sections.append(current)
+            current = None
+
     for page in ordered:
-        page_no = int(page.get("page", 0))
         doc_id = page.get("document_id")
-        filename = page.get("filename")
-        raw_text = str(page.get("text", "") or "")
-        lines = _lines(page)
-        if not lines:
-            continue
-        page_fragments: List[str] = []
-        for line in lines:
-            if _HEADING.match(line) and len(line) <= 180:
-                if current:
-                    sections.append(current)
-                current = {
-                    "section_id": f"{doc_id or 'document'}:section:{len(sections) + 1}",
-                    "heading": line,
-                    "text": "",
-                    "document_id": doc_id,
-                    "filename": filename,
-                    "page_numbers": [],
-                    "source_spans": [],
-                    "reconstruction": "EXPLICIT_HEADING",
-                }
+        if active_document is not None and doc_id != active_document:
+            flush_section()
+        active_document = doc_id
+        page_no = int(page.get("page", 0))
+        for line in _lines(page):
+            is_heading = bool(_HEADING.match(line) and len(line) <= 180)
+            if is_heading and current is not None:
+                flush_section()
             if current is None:
                 current = {
                     "section_id": f"{doc_id or 'document'}:section:{len(sections) + 1}",
-                    "heading": None,
+                    "heading": line if is_heading else None,
                     "text": "",
                     "document_id": doc_id,
-                    "filename": filename,
+                    "filename": page.get("filename"),
                     "page_numbers": [],
                     "source_spans": [],
-                    "reconstruction": "PAGE_TEXT_GROUP",
+                    "reconstruction": "EXPLICIT_HEADING" if is_heading else "PAGE_TEXT_GROUP",
                 }
-            page_fragments.append(line)
-        if current and page_fragments:
-            fragment = "\\n".join(page_fragments)
-            current["text"] = (current["text"] + "\\n" + fragment).strip()
-            if page_no not in current["page_numbers"]:
-                current["page_numbers"].append(page_no)
-            current["source_spans"].append({
-                "document_id": doc_id,
-                "filename": filename,
-                "page": page_no,
-                "quote": fragment,
-            })
-        # A new page without a heading remains part of the current section. This
-        # preserves possible cross-page clauses without asserting semantic linkage.
-    if current:
-        sections.append(current)
+            if span_page is not None and span_page != page_no:
+                flush_span()
+            span_page = page_no
+            span_lines.append(line)
+            current["text"] = (current["text"] + "\\n" + line).strip()
+    flush_section()
     return sections
 
 
