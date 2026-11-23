@@ -65,8 +65,9 @@ def answer_question(question: str, pages: List[dict], doc_ids: List[str], includ
                           and len(set(q_terms) & set(chunk_map[key]["tokens"])) / max(1, len(q_terms)) >= 0.25][:50]
     fused = reciprocal_rank_fusion([[repr(key) for key in bm25_ranking], [repr(key) for key in vector_ranking]])
     scored = []
+    key_lookup = {repr(candidate): candidate for candidate in chunk_map}
     for key, fused_score in fused.items():
-        chunk_key = next((candidate for candidate in chunk_map if repr(candidate) == key), None)
+        chunk_key = key_lookup.get(key)
         if chunk_key is None:
             continue
         c = chunk_map[chunk_key]
