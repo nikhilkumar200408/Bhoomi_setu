@@ -16,7 +16,8 @@
     "lucide-react": "^0.383.0",
     "clsx": "^2.1.1",
     "framer-motion": "^11.5.4",
-    "qrcode.react": "^3.1.0"
+    "qrcode.react": "^3.1.0",
+    "pdfjs-dist": "^4.10.38"
   },
   "devDependencies": {
     "typescript": "^5.5.4",
@@ -29,4 +30,4 @@
     "eslint": "^8.57.0",
     "eslint-config-next": "14.2.35"
   }
-}
+}\n
