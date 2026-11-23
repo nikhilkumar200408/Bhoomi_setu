@@ -51,8 +51,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <ShieldCheck size={16} className="text-accent" />
           </div>
           <div className="leading-tight">
-            <p className="font-serif font-semibold text-sm text-navy">BhoomiTrust AI</p>
-            <p className="text-[10px] text-ink/45">PS 26018</p>
+            <p className="font-serif font-semibold text-sm text-navy">Document AI</p>
+            <p className="text-[10px] text-ink/45">Evidence intelligence workspace</p>
           </div>
         </div>
 
