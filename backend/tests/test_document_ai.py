@@ -318,3 +318,46 @@ def test_labelled_date_conflicts_do_not_compare_different_clauses():
     ]
     result = F.analyse(pages, today=F.date(2026, 2, 1))
     assert not [x for x in result["contradictions"] if x["topic"] == "due date"]
+
+
+def test_eligibility_age_threshold_conflict_is_flagged_with_both_quotes():
+    pages = [
+        {"document_id": "policy-a", "filename": "policy_a.pdf", "page": 2, "source_type": "PDF_TEXT",
+         "text": "Applicants must meet a minimum age of 21 years."},
+        {"document_id": "policy-b", "filename": "policy_b.pdf", "page": 3, "source_type": "PDF_TEXT",
+         "text": "The minimum age is 18 years."},
+    ]
+    result = F.analyse(pages)
+    conflicts = [x for x in result["contradictions"] if x["topic"] == "minimum age"]
+    assert len(conflicts) == 1
+    conflict = conflicts[0]
+    assert conflict["status"] == "OPEN"
+    assert conflict["resolution"]["controlling_document_id"] is None
+    assert conflict["resolution"]["requires_human_review"] is True
+    assert {e["document_id"] for e in conflict["evidence"]} == {"policy-a", "policy-b"}
+    assert all(e["quote"] and e["verification"]["page_verified"] for e in conflict["evidence"])
+
+
+def test_obligation_notice_period_conflict_is_detected():
+    pages = [
+        {"document_id": "contract-a", "filename": "contract_a.pdf", "page": 1, "source_type": "PDF_TEXT",
+         "text": "The notice period is 30 days."},
+        {"document_id": "contract-b", "filename": "contract_b.pdf", "page": 1, "source_type": "PDF_TEXT",
+         "text": "The notice period shall be 60 days."},
+    ]
+    result = F.analyse(pages)
+    conflicts = [x for x in result["contradictions"] if x["topic"] == "notice period"]
+    assert len(conflicts) == 1
+    assert {e["document_id"] for e in conflicts[0]["evidence"]} == {"contract-a", "contract-b"}
+    assert conflicts[0]["resolution"]["requires_human_review"] is True
+
+
+def test_eligibility_thresholds_for_different_clauses_are_not_compared():
+    pages = [
+        {"document_id": "policy-a", "filename": "policy_a.pdf", "page": 1, "source_type": "PDF_TEXT",
+         "text": "Under Clause 4, the minimum age is 21 years."},
+        {"document_id": "policy-b", "filename": "policy_b.pdf", "page": 1, "source_type": "PDF_TEXT",
+         "text": "Under Clause 9, the minimum age is 18 years."},
+    ]
+    result = F.analyse(pages)
+    assert not [x for x in result["contradictions"] if x["topic"] == "minimum age"]
