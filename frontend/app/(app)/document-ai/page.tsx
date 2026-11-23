@@ -23,7 +23,9 @@ type Evidence = {
 type Claim = {
   claim_id: string; text: string; status: string; confidence: number;
   explanation?: string; requires_human_review?: boolean;
+  correction?: { corrected_text: string; reason: string; corrected_at: string };
 };
+type AuditEvent = { action: string; old_value?: string; new_value?: string; metadata?: Record<string, unknown>; timestamp: string; user_id?: string };
 type Conflict = {
   contradiction_id?: string; topic: string; status: string; type?: string;
   evidence: Evidence[]; explanation?: string;
@@ -72,6 +74,11 @@ export default function DocumentAIPage() {
   const [error, setError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [amendments, setAmendments] = useState<Record<string, unknown>[]>([]);
+  const [editingClaimId, setEditingClaimId] = useState<string | null>(null);
+  const [correctionText, setCorrectionText] = useState("");
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [auditOpen, setAuditOpen] = useState(false);
 
   async function loadDocuments() {
     setError(null);
@@ -217,6 +224,37 @@ export default function DocumentAIPage() {
       setCalculation(null);
     } finally {
       setCalculating(false);
+    }
+  }
+
+  async function saveClaimCorrection(claimId: string) {
+    if (!correctionText.trim() || correctionText.trim().length < 3 || correctionReason.trim().length < 5 || !answer?.answer_id) return;
+    try {
+      const result = await api.post<{ correction: Claim["correction"] }>(`/api/document-ai/claims/${claimId}/correct`, {
+        corrected_text: correctionText.trim(), reason: correctionReason.trim(),
+      });
+      setAnswer((current) => current ? {
+        ...current,
+        claims: current.claims.map((claim) => claim.claim_id === claimId ? { ...claim, correction: result.correction } : claim),
+      } : current);
+      setEditingClaimId(null);
+      setCorrectionText("");
+      setCorrectionReason("");
+      const history = await api.get<{ items: AuditEvent[] }>(`/api/document-ai/answers/${answer.answer_id}/audit`);
+      setAuditEvents(history.items || []);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Claim correction failed. Reviewer access may be required.");
+    }
+  }
+
+  async function loadAnswerAudit() {
+    if (!answer?.answer_id) return;
+    try {
+      const history = await api.get<{ items: AuditEvent[] }>(`/api/document-ai/answers/${answer.answer_id}/audit`);
+      setAuditEvents(history.items || []);
+      setAuditOpen(true);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not load audit history.");
     }
   }
 
@@ -479,11 +517,29 @@ export default function DocumentAIPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="whitespace-pre-wrap text-sm leading-7 text-navy">{highlightImportantText(answer.answer)}</p>
-              <div className="flex flex-wrap gap-4 border-t border-line pt-3 text-xs text-ink/55">
-                <span className="flex items-center gap-1.5"><ShieldCheck size={14} /> Faithfulness: {answer.faithfulness_score === null ? "N/A" : `${Math.round(answer.faithfulness_score * 100)}%`}</span>
-                <span>{answer.claims.length} claims checked</span>
-                <span>{answer.evidence.length} source passages</span>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
+                <div className="flex flex-wrap gap-4 text-xs text-ink/55">
+                  <span className="flex items-center gap-1.5"><ShieldCheck size={14} /> Faithfulness: {answer.faithfulness_score === null ? "N/A" : `${Math.round(answer.faithfulness_score * 100)}%`}</span>
+                  <span>{answer.claims.length} claims checked</span>
+                  <span>{answer.evidence.length} source passages</span>
+                </div>
+                <Button type="button" variant="secondary" onClick={loadAnswerAudit}>View audit history</Button>
               </div>
+              {auditOpen && (
+                <div className="rounded-card border border-line bg-slate-50 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <strong className="text-xs text-navy">Audit history</strong>
+                    <button type="button" className="text-xs text-accent" onClick={() => setAuditOpen(false)}>Close</button>
+                  </div>
+                  {auditEvents.length ? auditEvents.map((event, index) => (
+                    <div key={index} className="border-t border-line py-2 text-xs">
+                      <strong>{event.action}</strong> · {new Date(event.timestamp).toLocaleString()}
+                      {event.new_value && <p className="mt-1 text-ink/60">Updated to: {event.new_value}</p>}
+                      {event.metadata?.reason && <p className="text-ink/60">Reason: {String(event.metadata.reason)}</p>}
+                    </div>
+                  )) : <p className="text-xs text-ink/50">No review or correction events recorded for this answer.</p>}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -533,8 +589,30 @@ export default function DocumentAIPage() {
                       <span className="text-xs font-semibold text-navy">{claim.status.replaceAll("_", " ")}</span>
                       <span className="text-xs text-ink/45">{Math.round(claim.confidence * 100)}% term coverage</span>
                     </div>
-                    <p className="mt-2 text-sm text-ink/75">{highlightImportantText(claim.text)}</p>
-                    {claim.explanation && <p className="mt-1 text-xs text-ink/50">{claim.explanation}</p>}
+                    <p className="mt-2 text-sm text-ink/75">{highlightImportantText(claim.correction?.corrected_text || claim.text)}</p>
+                    {claim.correction && <p className="mt-1 text-xs font-medium text-amber-700">Reviewer-corrected · {claim.correction.reason}</p>}
+                    {claim.explanation && <p className="mt-1 text-xs text-ink/50">{claim.explanation}</p>
+                    {editingClaimId === claim.claim_id ? (
+                      <div className="mt-3 space-y-2 rounded-card bg-slate-50 p-3">
+                        <label className="block text-xs font-medium text-navy">Corrected statement
+                          <textarea value={correctionText} onChange={(event) => setCorrectionText(event.target.value)} rows={3} className="mt-1 w-full rounded-card border border-line bg-white p-2 text-sm" />
+                        </label>
+                        <label className="block text-xs font-medium text-navy">Reason for correction
+                          <textarea value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} rows={2} className="mt-1 w-full rounded-card border border-line bg-white p-2 text-sm" />
+                        </label>
+                        <div className="flex gap-2">
+                          <Button type="button" size="sm" onClick={() => void saveClaimCorrection(claim.claim_id)} disabled={correctionText.trim().length < 3 || correctionReason.trim().length < 5}>Save correction</Button>
+                          <Button type="button" size="sm" variant="secondary" onClick={() => setEditingClaimId(null)}>Cancel</Button>
+                        </div>
+                        <p className="text-[11px] text-ink/45">Revenue Officer only. Original claim and source citation remain unchanged.</p>
+                      </div>
+                    ) : (
+                      <button type="button" className="mt-2 text-xs font-semibold text-accent hover:underline" onClick={() => {
+                        setEditingClaimId(claim.claim_id);
+                        setCorrectionText(claim.correction?.corrected_text || claim.text);
+                        setCorrectionReason(claim.correction?.reason || "");
+                      }}>{claim.correction ? "Edit correction" : "Edit / correct defect"}</button>
+                    )}}
                   </div>
                 ))}
                 {conflicts.map((conflict, index) => (
