@@ -81,7 +81,7 @@ def _robots_allows(origin: str, path: str) -> bool:
                              timeout=8.0, follow_redirects=False)
         if response.status_code == 404:
             return True
-        if response.status_code != 200:
+        if response.status_code != 200 or len(response.content) > 512 * 1024:
             return False
         parser = RobotFileParser()
         parser.set_url(robots_url)
@@ -99,7 +99,11 @@ def fetch_public_page(url: str, allowed_domains: str) -> dict:
     allowed = {d.strip().lower().rstrip(".") for d in allowed_domains.split(",") if d.strip()}
     if host not in allowed:
         raise WebImportError("This website is not allowlisted by the administrator.")
-    if parsed.port not in (None, 443):
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise WebImportError("The webpage URL contains an invalid port.") from exc
+    if port not in (None, 443):
         raise WebImportError("Custom ports are not allowed.")
     _validate_destination(host)
     origin = f"https://{host}"
@@ -116,7 +120,7 @@ def fetch_public_page(url: str, allowed_domains: str) -> dict:
                 if "text/html" not in content_type:
                     raise WebImportError("The URL did not return an HTML webpage.")
                 declared_size = response.headers.get("content-length")
-                if declared_size and int(declared_size) > MAX_RESPONSE_BYTES:
+                if declared_size and declared_size.isdigit() and int(declared_size) > MAX_RESPONSE_BYTES:
                     raise WebImportError("The webpage exceeds the 2 MB import limit.")
                 chunks = []
                 total = 0
