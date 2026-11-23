@@ -201,6 +201,25 @@ def test_different_plots_are_not_contradictions():
     assert F.analyse(pages)["contradictions"] == []
 
 
+def test_amendment_chain_marks_prior_version_superseded_and_tracks_root():
+    amendments = [
+        {"amendment_id": "amd_ab", "base_document_id": "A", "amending_document_id": "B",
+         "topic": "interest (percent)", "status": "ACTIVE", "requires_human_review": False},
+        {"amendment_id": "amd_bc", "base_document_id": "B", "amending_document_id": "C",
+         "topic": "interest (percent)", "status": "ACTIVE", "requires_human_review": False},
+    ]
+    F._flag_cycles(amendments)
+    F._annotate_amendment_chains(amendments)
+
+    first, second = amendments
+    assert first["status"] == "SUPERSEDED"
+    assert second["status"] == "ACTIVE"
+    assert first["chain_id"] == second["chain_id"]
+    assert second["root_document_id"] == "A" and second["chain_depth"] == 2
+    assert second["previous_amendment_id"] == "amd_ab"
+    assert first["successor_amendment_ids"] == ["amd_bc"]
+
+
 def test_amendment_cycles_are_flagged():
     amds = [{"base_document_id": "A", "amending_document_id": "B", "status": "ACTIVE", "requires_human_review": False},
             {"base_document_id": "B", "amending_document_id": "A", "status": "ACTIVE", "requires_human_review": False}]
