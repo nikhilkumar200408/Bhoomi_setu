@@ -50,6 +50,11 @@ async def test_checklist_reports_found_partial_and_missing_with_page_evidence():
     assert found["evidence"][0]["document_id"] == "doc-a"
     assert found["evidence"][0]["page"] == 1
     assert await compliance_checklists_collection.count_documents({"user_id": USER["_id"]}) == 1
+    # Missing and ambiguous requirements are automatically queued for a human.
+    assert await compliance_reviews_collection.count_documents({"status": "PENDING"}) == 2
+    missing = next(x for x in result["requirements"] if x["label"] == "Payment receipt")
+    assert missing["evidence"][0]["document_id"] == "doc-a"
+    assert missing["evidence"][0]["page"] == 1
 
 
 @pytest.mark.asyncio
@@ -85,6 +90,8 @@ async def test_custom_rule_failure_creates_pending_human_review():
     review = await compliance_reviews_collection.find_one({"source_id": rule["_id"]})
     assert review is not None
     assert review["status"] == "PENDING"
+    assert review["evidence"]
+    assert review["evidence"][0]["document_id"] == "doc-rule"
 
 
 @pytest.mark.asyncio

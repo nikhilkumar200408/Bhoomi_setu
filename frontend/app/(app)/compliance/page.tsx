@@ -259,11 +259,7 @@ export default function CompliancePage() {
               <button disabled={busy === "compare" || !overview?.documents.length} className="rounded-lg bg-navy px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{busy === "compare" ? "Comparing…" : "Compare versions"}</button>
             </form>
             {comparison && <div className="mt-5 space-y-3">
-              <div className="grid grid-cols-3 gap-2">{([
-                ["Added", comparison.summary.added, "text-emerald-700"],
-                ["Removed", comparison.summary.removed, "text-rose-700"],
-                ["Modified", comparison.summary.modified, "text-amber-700"],
-              ] as [string, number, string][]).map(([label, count, color]) => <div key={label} className="rounded-lg bg-slate-50 p-3"><p className="text-[10px] text-ink/45">{label}</p><p className={"text-xl font-semibold " + color}>{count}</p></div>)}</div>
+              <div className="grid grid-cols-3 gap-2">{[["Added", comparison.summary.added, "text-emerald-700"], ["Removed", comparison.summary.removed, "text-rose-700"], ["Modified", comparison.summary.modified, "text-amber-700"]].map(([label, count, color]) => <div key={String(label)} className="rounded-lg bg-slate-50 p-3"><p className="text-[10px] text-ink/45">{label}</p><p className={"text-xl font-semibold " + color}>{count}</p></div>)}</div>
               <div className="max-h-80 space-y-2 overflow-auto">{comparison.modified.map((item, i) => <div key={i} className="rounded-lg border border-amber-200 p-3"><p className="text-[10px] font-semibold text-amber-800">MODIFIED</p><p className="mt-1 text-xs text-rose-700">Old · {item.old.filename} · p.{item.old.page}: {item.old.quote}</p><p className="mt-1 text-xs text-emerald-700">New · {item.new.filename} · p.{item.new.page}: {item.new.quote}</p></div>)}
                 {comparison.added.map((item, i) => <div key={"a-" + i} className="rounded-lg border border-emerald-200 p-3"><p className="text-[10px] font-semibold text-emerald-700">ADDED · {item.filename} · p.{item.page}</p><p className="mt-1 text-xs text-ink/70">{item.quote}</p></div>)}
                 {comparison.removed.map((item, i) => <div key={"r-" + i} className="rounded-lg border border-rose-200 p-3"><p className="text-[10px] font-semibold text-rose-700">REMOVED · {item.filename} · p.{item.page}</p><p className="mt-1 text-xs text-ink/70">{item.quote}</p></div>)}
