@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   AlertTriangle, BrainCircuit, Calculator, CheckCircle2, FileSearch, GitBranch,
-  Loader2, RefreshCw, Send, ShieldCheck, Sparkles, UploadCloud,
+  Loader2, RefreshCw, RotateCcw, Send, ShieldCheck, Sparkles, UploadCloud,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -143,6 +143,20 @@ export default function DocumentAIPage() {
     setAnswer(null);
     setConflicts([]);
     setAmendments([]);
+  }
+
+  // Reset only the active Document AI workspace. Uploaded files and indexed
+  // source pages remain in the account and can be selected again later.
+  function resetWorkspace() {
+    setSelected([]);
+    setQuestion("");
+    setLanguage("en");
+    setAnswer(null);
+    setConflicts([]);
+    setAmendments([]);
+    setError(null);
+    setIndexMessage("");
+    setCalculation(null);
   }
 
   async function indexSelected() {
@@ -329,9 +343,15 @@ export default function DocumentAIPage() {
                   </select>
                   <span className="text-xs text-ink/45">Up to 2,000 characters</span>
                 </div>
-                <Button type="submit" disabled={!question.trim() || !selected.length || indexedCount !== selected.length || asking}>
-                  {asking ? <><Loader2 size={14} className="animate-spin" /> Searching evidence…</> : <><Send size={14} /> Ask documents</>}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="secondary" onClick={resetWorkspace}
+                    disabled={asking || indexing || uploading || refreshing || (!selected.length && !question && !answer && !conflicts.length && !amendments.length && !error && !indexMessage && !calculation)}>
+                    <RotateCcw size={14} /> Reset
+                  </Button>
+                  <Button type="submit" disabled={!question.trim() || !selected.length || indexedCount !== selected.length || asking}>
+                    {asking ? <><Loader2 size={14} className="animate-spin" /> Searching evidence…</> : <><Send size={14} /> Ask documents</>}
+                  </Button>
+                </div>
               </div>
               {selected.length > 0 && indexedCount !== selected.length && (
                 <p className="text-xs text-review">Index all selected documents before asking a question.</p>
