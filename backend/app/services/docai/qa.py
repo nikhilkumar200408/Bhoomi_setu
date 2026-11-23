@@ -25,10 +25,29 @@ def build_chunks(pages: List[dict]) -> List[dict]:
     return chunks
 
 
-def faithfulness(claims: List[dict]):
+def faithfulness(claims: List[dict], evidence: List[dict] | None = None):
+    """Share of answer claims that are directly grounded in verified source quotations.
+
+    Retrieval relevance (SUPPORTED/PARTIALLY_SUPPORTED) is deliberately not used here:
+    a passage can be an exact, verified source quote while matching only part of a long
+    question. Every cited quote must exist on its source page and contain the claim text.
+    """
     if not claims:
         return None
-    return round(sum(c["status"] == "SUPPORTED" for c in claims) / len(claims), 4)
+    evidence_by_id = {item.get("evidence_id"): item for item in (evidence or [])}
+    grounded = 0
+    for claim in claims:
+        claim_text = " ".join(str(claim.get("text", "")).split()).casefold()
+        cited = [evidence_by_id.get(eid) for eid in claim.get("evidence_ids", [])]
+        if not claim_text or not cited or any(item is None for item in cited):
+            continue
+        if all(
+            item.get("verification", {}).get("quote_found_in_source") is True
+            and claim_text in " ".join(str(item.get("quote", "")).split()).casefold()
+            for item in cited
+        ):
+            grounded += 1
+    return round(grounded / len(claims), 4)
 
 
 def answer_question(question: str, pages: List[dict], doc_ids: List[str], include_superseded: bool = True,
@@ -116,7 +135,7 @@ def answer_question(question: str, pages: List[dict], doc_ids: List[str], includ
             answer += " Note: the selected documents contain conflicting values on this topic; see conflicts."
         missing = []
     return {"answer_id": "ans_" + gen_uuid()[:12], "question": question, "answer": answer, "abstained": abstained,
-            "faithfulness_score": 0.0 if abstained else faithfulness(claims),
+            "faithfulness_score": faithfulness(claims, list(evidences.values())),
             "faithfulness_method": FAITHFULNESS_METHOD,
             "retrieval_mode": "HYBRID_BM25_VECTOR" if vector_scores else "BM25", "claims": claims,
             "evidence": list(evidences.values()), "missing_evidence": missing, "conflicts": conflicts,
@@ -138,7 +157,7 @@ def reverify(answer: dict, pages_by_key: Dict[tuple, dict], verify_quotes: bool,
             if not all(ev_ok.get(i) for i in c["evidence_ids"]):
                 c["status"], c["requires_human_review"] = "INSUFFICIENT_EVIDENCE", True
                 c["explanation"] = "Cited quote could not be verified on the cited page."
-    answer["faithfulness_score"] = 0.0 if answer["abstained"] else faithfulness(answer["claims"])
+    answer["faithfulness_score"] = faithfulness(answer["claims"], answer["evidence"])
     return {"answer_id": answer["answer_id"], "verification_status": "COMPLETED",
             "faithfulness_score": answer["faithfulness_score"], "faithfulness_method": FAITHFULNESS_METHOD,
             "claims_checked": len(answer["claims"]),
