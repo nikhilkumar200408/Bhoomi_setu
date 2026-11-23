@@ -9,7 +9,6 @@ import {
   History,
   ShieldCheck,
   LogOut,
-  Search,
   BrainCircuit,
   MessageCircle,
 } from "lucide-react";
@@ -105,25 +104,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 }
 
 function TopBar() {
-  const router = useRouter();
   const { lang, setLang, t } = useLanguage();
   return (
-    <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-line px-5 lg:px-8 py-3 flex items-center justify-between gap-4">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const q = (e.currentTarget.elements.namedItem("q") as HTMLInputElement).value.trim();
-          if (q) router.push(`/document-ai?q=${encodeURIComponent(q)}`);
-        }}
-        className="relative w-full max-w-sm"
-      >
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/35" />
-        <input
-          name="q"
-          placeholder={t("search_placeholder")}
-          className="w-full rounded-card border border-line bg-slate-50 pl-9 pr-3 py-2 text-sm focus-ring focus:bg-white transition-colors"
-        />
-      </form>
+    <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-line px-5 lg:px-8 py-3 flex items-center justify-end gap-4">
       <div className="flex items-center gap-3 shrink-0">
         <select
           value={lang}
