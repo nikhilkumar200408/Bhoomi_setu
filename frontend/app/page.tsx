@@ -14,5 +14,5 @@ export default function RootPage() {
     router.replace(user ? "/document-ai" : "/login");
   }, [loading, user, router]);
 
-  return <LoadingState label="Loading Document AI…" />;
+  return <LoadingState label="Loading TrustLens AI…" />;
 }
