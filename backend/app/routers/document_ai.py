@@ -159,6 +159,44 @@ async def indexing_job(job_id: str, user: dict = Depends(get_current_user)):
     return _job_out(job)
 
 
+@router.get("/documents/{document_id}/extraction")
+async def document_extraction(document_id: str, user: dict = Depends(get_current_user)):
+    """Return persisted page extraction for an indexed document, including after a page reload."""
+    (document,) = await _own_documents([document_id], user)
+    if document.get("docai_status") != "INDEXED":
+        raise DocAIError(409, "RESOURCE_CONFLICT", "Index this document before viewing extracted pages.")
+
+    job = await docai_jobs_collection.find_one(
+        {"document_id": document_id, "status": "COMPLETED"},
+        sort=[("created_at", -1)],
+    )
+    pages = [p async for p in docai_pages_collection.find(
+        {"document_id": document_id},
+        {"_id": 0, "document_id": 0},
+    ).sort("page", 1)]
+    if not pages:
+        raise DocAIError(404, "EXTRACTION_NOT_FOUND", "No persisted extracted pages were found. Re-index this document.")
+
+    structure = (job or {}).get("structure")
+    if not structure:
+        structure = await run_in_threadpool(build_document_structure, pages)
+
+    return {
+        "document_id": document_id,
+        "filename": document["filename"],
+        "page_count": len(pages),
+        "structure": structure,
+        "pages": [{
+            "page": page.get("page"),
+            "text": page.get("text", ""),
+            "source_type": page.get("source_type", "UNKNOWN"),
+            "extraction_metadata": page.get("extraction_metadata", {}),
+            "layout_blocks": page.get("layout_blocks", []),
+            "tables": page.get("tables", []),
+        } for page in pages],
+    }
+
+
 # ----------------------------------------------------------------------------- domain-independent upload
 @router.post("/documents/upload")
 async def upload_document_ai_files(files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
