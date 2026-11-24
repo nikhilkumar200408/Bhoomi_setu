@@ -9,7 +9,7 @@ import { LoadingState } from "@/components/ui/States";
 
 type Doc = { id: string; filename: string; file_type?: string; docai_status?: string; status?: string };
 type Evidence = { evidence_id: string; filename: string; page_number: number; quote: string; source_url?: string; verification?: { quote_found_in_source?: boolean } };
-type Claim = { claim_id: string; text: string; status: string; confidence: number; explanation?: string };
+type Claim = { claim_id: string; text: string; status: string; confidence: number; explanation?: string; correction?: { corrected_text: string; reason: string; corrected_at: string } };
 type Conflict = { topic: string; status: string; explanation?: string; evidence: Evidence[] };
 type Answer = {
   answer_id?: string; question: string; answer: string; abstained: boolean;
@@ -291,7 +291,9 @@ export default function ChatPage() {
                         </div>)}
                       </div>}
                     </div>}
-                    {!!message.answer?.claims?.length && <div className="rounded-lg border border-line bg-slate-50 p-3"><p className="mb-2 text-xs font-semibold text-navy">Claim verification breakdown</p><div className="space-y-2">{message.answer.claims.map(claim => <div key={claim.claim_id} className="flex flex-wrap items-start justify-between gap-2 text-xs"><span className="min-w-0 flex-1 text-ink/70">{claim.text}</span><span className="shrink-0 rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-navy">{claim.status.replaceAll("_"," ")} · {Math.round(claim.confidence*100)}%</span></div>)}</div></div>}{!!message.answer?.conflicts?.length && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-semibold text-amber-900">Potential conflicts detected</p>{message.answer.conflicts.map((c,i) => <p key={i} className="mt-1 text-xs text-amber-900">{c.topic}: {c.explanation || c.status}</p>)}</div>}
+                    {!!message.answer?.claims?.length && <div className="rounded-lg border border-line bg-slate-50 p-3"><p className="mb-2 text-xs font-semibold text-navy">Claim verification breakdown</p><div className="space-y-2">{message.answer.claims.map(claim => <div key={claim.claim_id} className="flex flex-wrap items-start justify-between gap-2 text-xs"><span className="min-w-0 flex-1 text-ink/70">{claim.text}</span><span className="shrink-0 rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-navy">{claim.status.replaceAll("_"," ")} · {Math.round(claim.confidence*100)}%</span></div>)}</div></div>}
+                    {!!message.answer?.answer_id && <AnswerAuditPanel answerId={message.answer.answer_id}/>}
+                    {!!message.answer?.answer_id && message.answer.claims.map(claim => <ClaimReviewControl key={claim.claim_id} answerId={message.answer!.answer_id!} claim={claim}/>)}{!!message.answer?.conflicts?.length && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-semibold text-amber-900">Potential conflicts detected</p>{message.answer.conflicts.map((c,i) => <p key={i} className="mt-1 text-xs text-amber-900">{c.topic}: {c.explanation || c.status}</p>)}</div>}
                     {message.answer?.missing_evidence?.map((item,i) => <p key={i} className="text-xs text-amber-700">{item.description}</p>)}
                     <div className="flex flex-wrap items-center gap-3 border-t border-line pt-2 text-[10px] text-ink/40">
                       <span>{message.answer?.faithfulness_score == null ? "Faithfulness not scored" : `Evidence grounding: ${Math.round(message.answer.faithfulness_score * 100)}%`}</span>
@@ -378,6 +380,53 @@ export default function ChatPage() {
       <FinancialCalculatorPanel />
     </div>
   );
+}
+
+function ClaimReviewControl({ answerId, claim }: { answerId: string; claim: Claim }) {
+  const [open,setOpen] = useState(false);
+  const [corrected,setCorrected] = useState(claim.correction?.corrected_text || claim.text);
+  const [reason,setReason] = useState(claim.correction?.reason || "");
+  const [busy,setBusy] = useState(false);
+  const [notice,setNotice] = useState("");
+  async function save() {
+    if (corrected.trim().length < 3 || reason.trim().length < 5) return;
+    setBusy(true); setNotice("");
+    try {
+      await api.post(`/api/document-ai/claims/${claim.claim_id}/correct`, {
+        corrected_text: corrected.trim(), reason: reason.trim()
+      });
+      setNotice("Reviewer correction saved. The original source quote remains unchanged.");
+      setOpen(false);
+    } catch(e) {
+      setNotice(e instanceof ApiError ? e.message : "Correction could not be saved. Reviewer permission may be required.");
+    } finally { setBusy(false); }
+  }
+  return <div className="rounded-lg border border-line bg-white p-3">
+    <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-semibold uppercase tracking-wide text-ink/45">Claim review</p><p className="mt-1 text-xs text-navy">{claim.correction?.corrected_text || claim.text}</p>{claim.correction && <p className="mt-1 text-[10px] text-amber-700">Previously corrected: {claim.correction.reason}</p>}</div><button onClick={()=>setOpen(v=>!v)} className="rounded-md border border-line px-2 py-1.5 text-[10px] font-semibold text-accent">{open ? "Close" : claim.correction ? "Edit correction" : "Correct claim"}</button></div>
+    {open && <div className="mt-3 space-y-2"><label className="block text-[10px] font-medium text-ink/60">Corrected statement<textarea value={corrected} onChange={e=>setCorrected(e.target.value)} rows={2} className="mt-1 w-full rounded-md border border-line p-2 text-xs"/></label><label className="block text-[10px] font-medium text-ink/60">Reason<textarea value={reason} onChange={e=>setReason(e.target.value)} rows={2} className="mt-1 w-full rounded-md border border-line p-2 text-xs"/></label><button onClick={()=>void save()} disabled={busy || corrected.trim().length<3 || reason.trim().length<5} className="rounded-md bg-navy px-3 py-2 text-[10px] font-semibold text-white disabled:opacity-50">{busy ? "Saving…" : "Save reviewer correction"}</button><p className="text-[10px] text-ink/40">Restricted by backend reviewer permissions. The original evidence and quote are preserved.</p></div>}
+    {notice && <p className="mt-2 text-[10px] text-ink/60">{notice}</p>}
+  </div>;
+}
+
+function AnswerAuditPanel({ answerId }: { answerId: string }) {
+  const [open,setOpen] = useState(false);
+  const [events,setEvents] = useState<Record<string,any>[]>([]);
+  const [busy,setBusy] = useState(false);
+  const [error,setError] = useState("");
+  async function load() {
+    if (open) { setOpen(false); return; }
+    setBusy(true); setError("");
+    try {
+      const result = await api.get<{items: Record<string,any>[]}>(`/api/document-ai/answers/${answerId}/audit`);
+      setEvents(result.items || []); setOpen(true);
+    } catch(e) { setError(e instanceof ApiError ? e.message : "Audit history is unavailable."); }
+    finally { setBusy(false); }
+  }
+  return <div className="rounded-lg border border-line bg-white p-3">
+    <button onClick={()=>void load()} disabled={busy} className="text-xs font-semibold text-accent">{busy ? "Loading audit…" : open ? "Hide answer audit history" : "View answer audit history"}</button>
+    {error && <p className="mt-2 text-[10px] text-rose-700">{error}</p>}
+    {open && <div className="mt-2 space-y-2">{events.length ? events.map((event,index)=><div key={index} className="border-t border-line pt-2 text-[10px] text-ink/60"><strong className="text-navy">{String(event.action || "Event")}</strong> · {String(event.timestamp || "")}{event.new_value && <p>Updated to: {String(event.new_value)}</p>}{event.metadata?.reason && <p>Reason: {String(event.metadata.reason)}</p>}</div>) : <p className="text-[10px] text-ink/45">No audit events recorded for this answer yet.</p>}</div>}
+  </div>;
 }
 
 type IntelligenceNode = { id: string; type: string; label: string; document_id?: string };
