@@ -5,7 +5,7 @@ import { ToastProvider } from "@/components/ui/Toast";
 import { LanguageProvider } from "@/lib/language";
 
 export const metadata: Metadata = {
-  title: "BhoomiTrust AI — Evidence-Based Document Intelligence",
+  title: "TrustLens AI — Evidence-Based Document Intelligence",
   description:
     "Evidence-based Document AI for OCR, document retrieval, contradiction detection, and source-cited answers.",
 };
