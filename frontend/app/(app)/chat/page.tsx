@@ -3,6 +3,7 @@
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Bot, Check, ChevronDown, FileText, Loader2, MessageCircle, Plus, Send, ShieldCheck, Sparkles, Trash2, User, X, ExternalLink, BookOpen, Quote, Network, Search, ScanSearch, RefreshCw, Calculator } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/Button";
 import PdfEvidenceViewer from "@/components/PdfEvidenceViewer";
 import { LoadingState } from "@/components/ui/States";
@@ -378,6 +379,7 @@ export default function ChatPage() {
     </div>
       <DocumentIntelligencePanel documents={indexedDocs} />
       <FinancialCalculatorPanel />
+      <AnswerAnalyticsPanel answer={latestAnswer} />
     </div>
   );
 }
@@ -427,6 +429,32 @@ function AnswerAuditPanel({ answerId }: { answerId: string }) {
     {error && <p className="mt-2 text-[10px] text-rose-700">{error}</p>}
     {open && <div className="mt-2 space-y-2">{events.length ? events.map((event,index)=><div key={index} className="border-t border-line pt-2 text-[10px] text-ink/60"><strong className="text-navy">{String(event.action || "Event")}</strong> · {String(event.timestamp || "")}{event.new_value && <p>Updated to: {String(event.new_value)}</p>}{event.metadata?.reason && <p>Reason: {String(event.metadata.reason)}</p>}</div>) : <p className="text-[10px] text-ink/45">No audit events recorded for this answer yet.</p>}</div>}
   </div>;
+}
+
+function AnswerAnalyticsPanel({ answer }: { answer: Answer | undefined }) {
+  const claims = answer?.claims || [];
+  const evidence = answer?.evidence || [];
+  const distribution = [
+    { name: "Supported", value: claims.filter(item => item.status === "SUPPORTED").length },
+    { name: "Partial", value: claims.filter(item => item.status === "PARTIALLY_SUPPORTED").length },
+    { name: "Review / contradicted", value: claims.filter(item => !["SUPPORTED","PARTIALLY_SUPPORTED"].includes(item.status)).length },
+  ];
+  const bySource = Object.entries(evidence.reduce<Record<string,number>>((acc,item) => {
+    acc[item.filename] = (acc[item.filename] || 0) + 1; return acc;
+  },{})).map(([name,count]) => ({ name: name.length > 20 ? name.slice(0,20) + "…" : name, count }));
+  return <section className="rounded-2xl border border-line bg-white p-5 shadow-card">
+    <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-serif text-lg font-semibold text-navy">Answer Quality & Evidence Analytics</h2><p className="mt-1 text-xs text-ink/50">Metrics and charts for the latest assistant answer.</p></div><span className="text-[10px] text-ink/40">{answer ? "Latest answer" : "Waiting for a question"}</span></div>
+    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="rounded-xl bg-slate-50 p-3"><div className="flex justify-between text-xs"><span className="text-ink/60">Faithfulness · verified source grounding</span><strong className="text-navy">{answer?.faithfulness_score == null ? "—" : Math.round(answer.faithfulness_score*100)+"%"}</strong></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-emerald-600" style={{width:Math.max(0,Math.min(100,(answer?.faithfulness_score ?? 0)*100))+"%"}}/></div></div>
+      <div className="rounded-xl bg-slate-50 p-3"><div className="flex justify-between text-xs"><span className="text-ink/60">Question-term coverage</span><strong className="text-navy">{answer?.question_coverage_score == null ? "—" : Math.round(answer.question_coverage_score*100)+"%"}</strong></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-amber-500" style={{width:Math.max(0,Math.min(100,(answer?.question_coverage_score ?? 0)*100))+"%"}}/></div></div>
+    </div>
+    <div className="mt-4 grid gap-4 xl:grid-cols-3">
+      <div className="rounded-xl border border-line p-3"><h3 className="text-xs font-semibold text-navy">Claim status distribution</h3><div className="h-48">{claims.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={distribution.filter(x=>x.value>0)} dataKey="value" nameKey="name" outerRadius={65} label><Cell fill="#0f766e"/><Cell fill="#d97706"/><Cell fill="#dc2626"/></Pie><Tooltip/><Legend/></PieChart></ResponsiveContainer> : <p className="pt-16 text-center text-xs text-ink/40">No claim data yet.</p>}</div></div>
+      <div className="rounded-xl border border-line p-3"><h3 className="text-xs font-semibold text-navy">Claim counts</h3><div className="h-48">{claims.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={distribution}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="name" tick={{fontSize:9}}/><YAxis allowDecimals={false}/><Tooltip/><Bar dataKey="value" fill="#2563eb" radius={[5,5,0,0]}/></BarChart></ResponsiveContainer> : <p className="pt-16 text-center text-xs text-ink/40">Ask a question to populate claim analytics.</p>}</div></div>
+      <div className="rounded-xl border border-line p-3"><h3 className="text-xs font-semibold text-navy">Evidence by source document</h3><div className="h-48">{bySource.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={bySource}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="name" tick={{fontSize:8}}/><YAxis allowDecimals={false}/><Tooltip/><Bar dataKey="count" fill="#7c3aed" radius={[5,5,0,0]}/></BarChart></ResponsiveContainer> : <p className="pt-16 text-center text-xs text-ink/40">No evidence sources yet.</p>}</div></div>
+    </div>
+    <p className="mt-3 text-[10px] leading-4 text-ink/40">Faithfulness measures verified supported claims. Question coverage is retrieval coverage, not a guarantee of complete legal analysis.</p>
+  </section>;
 }
 
 type IntelligenceNode = { id: string; type: string; label: string; document_id?: string };
