@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Bot, Check, ChevronDown, FileText, Loader2, MessageCircle, Plus, Send, ShieldCheck, Sparkles, Trash2, User, X, ExternalLink, BookOpen, Quote } from "lucide-react";
+import { AlertCircle, Bot, Check, ChevronDown, FileText, Loader2, MessageCircle, Plus, Send, ShieldCheck, Sparkles, Trash2, User, X, ExternalLink, BookOpen, Quote, Network, Search, ScanSearch, RefreshCw, Calculator } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import PdfEvidenceViewer from "@/components/PdfEvidenceViewer";
@@ -374,5 +374,140 @@ export default function ChatPage() {
         <div className="border-t border-line p-3 text-[10px] leading-5 text-ink/40"><ShieldCheck size={12} className="mr-1 inline text-verified"/> Only retrieved source evidence is shown here.</div>
       </aside>
     </div>
+      <DocumentIntelligencePanel documents={indexedDocs} />
+      <FinancialCalculatorPanel />
+    </div>
   );
 }
+
+type IntelligenceNode = { id: string; type: string; label: string; document_id?: string };
+type IntelligenceEdge = { id: string; source: string; target: string; type: string; document_id?: string; page?: number };
+type IntelligenceField = { id: string; filename: string; document_id: string; page: number; field_type: string; label: string; value: string; confidence: number; confidence_basis: string; status: string; quote: string };
+type IntelligenceReview = { document_id: string; filename: string; page: number; signals: string[]; review_candidates: { text: string; confidence: number; bbox: number[] }[]; analysis_status: string };
+type IntelligenceData = { indexed_document_count: number; page_count: number; entity_count: number; relationship_count: number; nodes: IntelligenceNode[]; edges: IntelligenceEdge[]; fields: IntelligenceField[]; visual_review: IntelligenceReview[]; notice: string };
+type IntelligenceSearchResult = { document_id: string; filename: string; page: number; score: number; matched_terms: string[]; snippet: string; source_type: string };
+
+function DocumentIntelligencePanel({ documents }: { documents: Doc[] }) {
+  const [data, setData] = useState<IntelligenceData | null>(null);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<IntelligenceSearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState("ALL");
+  const [activeNode, setActiveNode] = useState<string | null>(null);
+  const ids = useMemo(() => documents.map(doc => doc.id), [documents]);
+
+  const load = useCallback(async () => {
+    if (!ids.length) { setData(null); return; }
+    setLoading(true); setError("");
+    try {
+      const response = await api.get<IntelligenceData>("/api/intelligence/overview?document_ids=" + encodeURIComponent(ids.join(",")));
+      setData(response);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Document intelligence could not be loaded.");
+    } finally { setLoading(false); }
+  }, [ids]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const runSearch = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!query.trim() || !ids.length) return;
+    setSearching(true); setError("");
+    try {
+      const response = await api.get<{ items: IntelligenceSearchResult[] }>(
+        "/api/intelligence/search?q=" + encodeURIComponent(query.trim()) + "&document_ids=" + encodeURIComponent(ids.join(",")) + "&limit=20"
+      );
+      setResults(response.items || []);
+    } catch (e) { setError(e instanceof ApiError ? e.message : "Search failed."); }
+    finally { setSearching(false); }
+  };
+
+  const graphNodes = useMemo(() => {
+    const nodes = (data?.nodes || []).slice(0, 32);
+    return nodes.map((node, index) => ({
+      ...node,
+      x: 360 + Math.cos((2 * Math.PI * index) / Math.max(nodes.length, 1)) * 145,
+      y: 190 + Math.sin((2 * Math.PI * index) / Math.max(nodes.length, 1)) * 145,
+    }));
+  }, [data]);
+  const positions = useMemo(() => Object.fromEntries(graphNodes.map(node => [node.id, { x: node.x, y: node.y }])), [graphNodes]);
+  const visibleFields = (data?.fields || []).filter(field => filter === "ALL" || field.status === filter);
+  const selectedNode = data?.nodes.find(node => node.id === activeNode);
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-line bg-white shadow-card">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line p-5">
+        <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">TrustLens AI intelligence</p><h2 className="mt-1 flex items-center gap-2 font-serif text-xl font-semibold text-navy"><Network size={18}/> Document Intelligence Centre</h2><p className="mt-1 text-xs text-ink/50">Knowledge graph, entity candidates, extraction confidence, visual review and indexed-page search.</p></div>
+        <button onClick={() => void load()} disabled={loading || !ids.length} className="inline-flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-xs text-navy disabled:opacity-50"><RefreshCw size={13} className={loading ? "animate-spin" : ""}/> Refresh</button>
+      </div>
+      {!ids.length ? <p className="p-6 text-sm text-ink/50">Upload and index documents in Document AI. Indexed documents will automatically become available here.</p> :
+      loading && !data ? <p className="p-6 text-sm text-ink/50">Building intelligence workspace…</p> : <>
+        {error && <p className="m-4 rounded-lg bg-rose-50 p-3 text-xs text-rose-800">{error}</p>}
+        <div className="grid gap-3 border-b border-line p-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ["Indexed documents", data?.indexed_document_count ?? 0],
+            ["Source pages", data?.page_count ?? 0],
+            ["Entity candidates", data?.entity_count ?? 0],
+            ["Relationships", data?.relationship_count ?? 0],
+          ].map(([label, value]) => <div key={String(label)} className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] text-ink/50">{label}</p><p className="mt-1 text-2xl font-semibold text-navy">{value}</p></div>)}
+        </div>
+        <div className="grid gap-4 p-4 xl:grid-cols-[1.2fr_0.8fr]">
+          <div className="overflow-hidden rounded-xl border border-line">
+            <div className="flex items-center justify-between border-b border-line p-3"><div><h3 className="flex items-center gap-2 text-sm font-semibold text-navy"><Network size={15}/> Relationship Knowledge Graph</h3><p className="text-[11px] text-ink/45">Select a node to inspect its type.</p></div><span className="text-xs text-ink/45">{data?.nodes.length || 0} nodes</span></div>
+            {(data?.nodes.length || 0) ? <div className="overflow-x-auto bg-slate-50 p-2">
+              <svg viewBox="0 0 720 390" className="h-[330px] min-w-[560px] w-full" role="img" aria-label="Document relationship graph">
+                {data?.edges.map(edge => { const a = positions[edge.source], b = positions[edge.target]; return a && b ? <line key={edge.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#cbd5e1" strokeWidth="1.4"/> : null; })}
+                {graphNodes.map(node => <g key={node.id} onClick={() => setActiveNode(node.id)} className="cursor-pointer"><circle cx={node.x} cy={node.y} r={activeNode === node.id ? 13 : 10} fill={node.type === "DOCUMENT" ? "#17324d" : node.type === "OWNER" ? "#b58a42" : node.type === "PROPERTY_ID" ? "#0f766e" : "#64748b"} stroke={activeNode === node.id ? "#fbbf24" : "#fff"} strokeWidth="3"/><text x={node.x} y={node.y + 24} textAnchor="middle" fontSize="10" fill="#334155">{node.label.length > 18 ? node.label.slice(0,18) + "…" : node.label}</text></g>)}
+              </svg>
+            </div> : <p className="p-8 text-center text-xs text-ink/45">No relationship data found yet.</p>}
+            {selectedNode && <p className="border-t border-line bg-slate-50 p-3 text-xs"><strong>{selectedNode.label}</strong> · {selectedNode.type.replaceAll("_"," ")} <button onClick={() => setActiveNode(null)} className="float-right text-accent">Clear</button></p>}
+          </div>
+          <div className="rounded-xl border border-line p-4">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-navy"><Search size={15}/> Natural Language Document Search</h3>
+            <p className="mt-1 text-[11px] text-ink/45">Search indexed source pages by names, survey numbers, dates or clauses.</p>
+            <form onSubmit={runSearch} className="mt-3 space-y-2"><textarea value={query} onChange={e => setQuery(e.target.value)} rows={3} placeholder="e.g. Find pages mentioning survey number 42" className="w-full rounded-lg border border-line p-3 text-xs text-navy"/><button disabled={searching || query.trim().length < 2} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-navy px-3 py-2.5 text-xs font-medium text-white disabled:opacity-50">{searching ? "Searching…" : <><Search size={13}/> Search indexed pages</>}</button></form>
+            <p className="mt-2 text-[10px] text-ink/40">Uses BM25 lexical ranking; results are source passages, not legal conclusions.</p>
+          </div>
+        </div>
+        {!!results.length && <div className="space-y-2 border-b border-line px-4 pb-4"><h3 className="text-xs font-semibold text-navy">Search results ({results.length})</h3>{results.map((result,index) => <article key={result.document_id + result.page + index} className="rounded-lg border border-line p-3"><div className="flex justify-between gap-2 text-xs"><strong>{result.filename}</strong><span className="text-ink/45">Page {result.page} · {result.score.toFixed(2)}</span></div><p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-ink/70">{result.snippet}</p></article>)}</div>}
+        <div className="grid gap-4 border-t border-line p-4 xl:grid-cols-2">
+          <div><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h3 className="flex items-center gap-2 text-sm font-semibold text-navy"><ShieldCheck size={15}/> AI Confidence & Verification</h3><select value={filter} onChange={e => setFilter(e.target.value)} className="rounded-lg border border-line px-2 py-1.5 text-xs"><option value="ALL">All statuses</option><option value="VERIFIED">Source verified</option><option value="NEEDS_REVIEW">Needs review</option><option value="UNCERTAIN">Uncertain</option></select></div>
+            <div className="mb-3 grid grid-cols-3 gap-2">{["VERIFIED","NEEDS_REVIEW","UNCERTAIN"].map(status => <div key={status} className="rounded-lg bg-slate-50 p-2"><p className="text-[10px] text-ink/45">{status.replaceAll("_"," ")}</p><p className="text-lg font-semibold text-navy">{data?.fields.filter(field => field.status === status).length || 0}</p></div>)}</div>
+            <div className="max-h-[440px] space-y-2 overflow-y-auto">{visibleFields.slice(0,80).map(field => <article key={field.id} className="rounded-lg border border-line p-3"><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-xs text-navy">{field.value}</strong><span className="text-[10px] text-ink/45">{Math.round(field.confidence*100)}% · {field.status}</span></div><p className="mt-1 text-[11px] text-ink/50">{field.label} · {field.filename} · Page {field.page}</p><p className="mt-2 text-xs text-ink/65">“{field.quote}”</p></article>)}</div>
+            <p className="mt-2 text-[10px] text-ink/40">Confidence reflects extraction reliability, not legal correctness.</p>
+          </div>
+          <div><h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-navy"><ScanSearch size={15}/> Handwriting & Stamp Review Candidates</h3><div className="max-h-[520px] space-y-2 overflow-y-auto">{(data?.visual_review || []).map((item,index) => <article key={item.document_id + item.page + index} className="rounded-lg border border-amber-200 bg-amber-50/50 p-3"><div className="flex justify-between gap-2 text-xs"><strong>{item.filename}</strong><span>Page {item.page}</span></div>{item.signals.map((signal,i)=><p key={i} className="mt-1 text-xs text-ink/65">• {signal}</p>)}{item.review_candidates.length > 0 && <p className="mt-2 text-[10px] text-amber-800">{item.review_candidates.length} low-confidence OCR region(s) flagged.</p>}</article>)}{!data?.visual_review.length && <p className="text-xs text-ink/45">No current visual-review candidates.</p>}</div><p className="mt-2 text-[10px] text-ink/40">These are manual-review signals, not signature, handwriting or stamp authentication.</p></div>
+        </div>
+        <p className="border-t border-line p-4 text-[10px] leading-5 text-ink/45">{data?.notice}</p>
+      </>}
+    </section>
+  );
+}
+
+type CalculationResult = { formula: string; working: string; notice: string; calculation_type: string; result: Record<string, number> };
+function FinancialCalculatorPanel() {
+  const [kind,setKind] = useState<"simple_interest"|"compound_interest"|"emi">("simple_interest");
+  const [principal,setPrincipal] = useState("100000");
+  const [rate,setRate] = useState("8");
+  const [duration,setDuration] = useState("2");
+  const [unit,setUnit] = useState<"years"|"months">("years");
+  const [result,setResult] = useState<CalculationResult|null>(null);
+  const [busy,setBusy] = useState(false);
+  const [error,setError] = useState("");
+  async function calculate() {
+    setBusy(true); setError("");
+    try { setResult(await api.post<CalculationResult>("/api/document-ai/calculate",{calculation_type:kind,principal:Number(principal),annual_rate_percent:Number(rate),duration_value:Number(duration),duration_unit:unit,compounding_frequency:12})); }
+    catch(e) { setError(e instanceof ApiError ? e.message : "Calculation failed."); setResult(null); }
+    finally { setBusy(false); }
+  }
+  return <section className="rounded-2xl border border-line bg-white p-5 shadow-card"><h2 className="flex items-center gap-2 font-serif text-lg font-semibold text-navy"><Calculator size={17}/> Financial & Loan Calculator</h2><p className="mt-1 text-xs text-ink/50">Simple interest, compound interest and EMI with transparent working. Values are user-provided, not verified document facts.</p><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    <label className="text-xs text-ink/60">Calculation<select value={kind} onChange={e=>setKind(e.target.value as typeof kind)} className="mt-1 w-full rounded-lg border border-line p-2 text-sm"><option value="simple_interest">Simple interest</option><option value="compound_interest">Compound interest</option><option value="emi">Loan EMI</option></select></label>
+    <label className="text-xs text-ink/60">Principal (₹)<input type="number" min="1" value={principal} onChange={e=>setPrincipal(e.target.value)} className="mt-1 w-full rounded-lg border border-line p-2 text-sm"/></label>
+    <label className="text-xs text-ink/60">Annual rate (%)<input type="number" min="0" max="100" step="0.01" value={rate} onChange={e=>setRate(e.target.value)} className="mt-1 w-full rounded-lg border border-line p-2 text-sm"/></label>
+    <label className="text-xs text-ink/60">Duration<input type="number" min="0.01" value={duration} onChange={e=>setDuration(e.target.value)} className="mt-1 w-full rounded-lg border border-line p-2 text-sm"/></label>
+    <label className="text-xs text-ink/60">Unit<select value={unit} onChange={e=>setUnit(e.target.value as typeof unit)} className="mt-1 w-full rounded-lg border border-line p-2 text-sm"><option value="years">Years</option><option value="months">Months</option></select></label>
+  </div><button onClick={()=>void calculate()} disabled={busy || !principal || !rate || !duration} className="mt-3 rounded-lg bg-navy px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">{busy?"Calculating…":"Calculate with working"}</button>{error && <p className="mt-2 text-xs text-rose-700">{error}</p>}{result && <div className="mt-4 rounded-lg bg-slate-50 p-4"><strong className="text-sm text-navy">{result.formula}</strong><p className="mt-2 text-xs leading-5 text-ink/65">{result.working}</p><div className="mt-3 flex flex-wrap gap-4">{Object.entries(result.result).map(([key,value])=><div key={key}><p className="text-[10px] uppercase text-ink/45">{key.replaceAll("_"," ")}</p><p className="text-lg font-semibold text-navy">₹{value.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</p></div>)}</div><p className="mt-2 text-[10px] text-ink/45">{result.notice}</p></div>}</section>;
+}
+
