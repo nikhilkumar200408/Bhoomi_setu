@@ -1,15 +1,65 @@
 # Project state
 
-**Bhoomi_setu** is the platform; **BhoomiTrust AI** is the existing land-record module inside it. Goal: a Document AI layer (multi-document upload, OCR, cited question answering, quote/claim verification, contradiction and amendment tracking, human review) on top of the land-record app, without breaking it.
+**Bhoomi_setu** is the platform repository. Its existing BhoomiTrust workflows are maintained as a separate application area. The **Document AI module is domain-independent**: it is designed to process general business and institutional documents such as banking and loan agreements, insurance policies, vendor/legal contracts, regulatory circulars, public policies, and other supported PDFs. It must not assume that uploaded documents are land records. The goal is to add multi-document ingestion, OCR, cited Q&A, quote/claim verification, contradiction and amendment analysis, and human review without breaking existing platform workflows.
 
-- Stack: Next.js 14 + TypeScript + Tailwind (`frontend/`), FastAPI + Motor (`backend/`), MongoDB, Docker Compose (3000 / 8000 / 27017).
-- Backend layout: `routers/` (auth, documents, records, dashboard, search, audit, **document_ai**), `services/` (pipeline, ocr, extraction, validation, confidence, anomaly, verification, audit, **docai**), `deps.py` (auth + ownership helpers).
-- Branches: `dev` is the integration target, never push to `main`. Feature branches: `neha_frontend` (Neha), `pakhi_backend` (Pakhi), `cleanup/audit-security-hardening`, `docs/handoff-audit-findings`, `infra/docker-docs-fixes` (the last three are already contained in `dev` at `09fab17`).
-- API contract: `docs/API_CONTRACT.md` (implementation notes at the bottom). Existing API: `docs/API.md`.
-- Env: Python 3.12, Tesseract (+ `hin`, `kan` data for the Indic OCR test), poppler, Node for the frontend. Install backend with `requirements-dev.txt`.
+## Repository and architecture
 
-## Security decisions
-- Ownership policy: ADMIN and REVENUE_OFFICER see everything (reviewers); a DATA_ENTRY_OPERATOR only sees documents they uploaded plus the records, audit rows, search hits, stats and CSV derived from them. Another user's resource answers 404 (no existence leak). Helpers live in `backend/app/deps.py`.
-- `/api/search` escapes the query (`re.escape`) instead of passing it to Mongo as a regex.
-- `GET /api/records/public-verify/{id}` stays public on purpose (QR certificate check, exposes only hash + status).
-- The Fast2SMS key that was committed earlier is still in Git history: rotate it.
+- Integration branch: `dev`. Never push directly to `main`.
+- Frontend: Next.js 14, TypeScript, Tailwind in `frontend/`.
+- Backend: FastAPI + Motor in `backend/`; MongoDB; Docker Compose services use ports 3000 / 8000 / 27017.
+- Backend routers include auth, documents, records, dashboard, search, audit and `document_ai`.
+- Services include the existing OCR/extraction/validation/verification pipeline and `services/docai`.
+- Document AI API contract: `docs/API_CONTRACT.md`; existing API documentation: `docs/API.md`.
+
+## Current Document AI implementation (code-level snapshot)
+
+- Indexing jobs and PDF text/OCR extraction exist.
+- Retrieval combines BM25 with optional local Ollama embeddings (configured for BGE-M3) and reciprocal-rank fusion; lexical-only fallback remains available.
+- Q&A is evidence-first and extractive; optional local Ollama drafting is marked unverified and cannot replace claims, citations, abstention or faithfulness.
+- Page-level evidence and backend quote verification exist.
+- Abstention uses adaptive lexical coverage heuristics; it is conservative but is not a semantic guarantee.
+- Faithfulness is a verified-claim ratio, not a calibrated probability of truth.
+- Contradiction detection is rule-based and focuses on structured facts such as percentages, INR amounts, area and duration.
+- Amendment handling uses explicit amendment cues, base-document references and effective-date checks; unresolved cases need human review.
+- Claim review is restricted to Revenue Officers and audited.
+- The dedicated Document AI frontend supports upload/indexing, source selection, Q&A, citations, contradictions, amendments, and a financial calculator. PDF passage highlighting and a complete in-app review experience remain outstanding.
+
+See `docs/IMPLEMENTATION_PROGRESS.md` for the detailed status and unverified test matrix. Do not treat historical test output as a fresh test run.
+
+## Security and access decisions
+
+- ADMIN and REVENUE_OFFICER are privileged reviewer roles.
+- DATA_ENTRY_OPERATOR access is scoped to resources they own/upload, according to the backend ownership helpers.
+- Foreign resources should return 404 to avoid leaking their existence.
+- `/api/search` must escape user search input before regex use.
+- `GET /api/records/public-verify/{id}` is intentionally public for QR certificate verification and must expose only the intended verification fields.
+- Keep Document AI additive under `/api/document-ai`; do not reinterpret land-record `overall_confidence` as Document AI `faithfulness_score`.
+
+## Local inference direction
+
+- Document AI must not require external AI inference APIs or cloud API keys.
+- Local runtime: Ollama. The first chat integration targets the already-installed `llama3.2` model; BGE-M3 remains the planned embedding model.
+- Ollama drafting is opt-in, runs locally, and returns a clearly marked unverified draft only. It does not replace backend claims, citations, contradiction results, abstention, or faithfulness scoring. Runtime inference and safety tests still need to be run.
+- For a backend running in Docker on macOS, configure the Ollama host explicitly (often `http://host.docker.internal:11434`); container `localhost` is not the Mac host.
+- Do not expose the Ollama service publicly. A public deployment needs a separately secured inference host.
+- Model downloads require internet initially; local inference can operate offline after weights are available.
+
+## Environment and maintenance
+
+- Backend development baseline: Python 3.12; Tesseract and Poppler are used by document processing. Install development dependencies from `backend/requirements-dev.txt`.
+- OCR languages require the corresponding Tesseract traineddata files.
+- A previously committed Fast2SMS credential was reported in Git history. Rotate it immediately if still active; never copy secrets into tracked files. History rewriting is a separate coordinated operation.
+- Phase 9 CI now runs backend tests, frontend lint/build, and Docker Compose validation/image builds on dev/main pushes and pull requests. The manual end-to-end checklist remains required; record exact results before release.
+
+
+## Phase 10 status
+
+Phase 10 adds explainability and review capabilities without changing the evidence-first authority model. Initial code updates include a stricter supported-claim faithfulness ratio, an always-visible workspace reset control, citation/key-point highlighting, additional analytics charts, and a one-line LLM summary display. Human correction/audit, local Hindi retrieval, and safe public web-page ingestion remain follow-up implementation items and are not yet complete.
+
+
+## Phase 10 additions (code-level; verification pending)
+
+- Claim corrections are reviewer annotations stored separately from original claims and source quotes, with answer-scoped audit history.
+- Hindi query translation uses local Ollama only; source OCR uses installed Tesseract language data. The answer must still cite original source text.
+- Public webpage ingestion is restricted to administrator-allowlisted HTTPS hosts, public IPs, robots.txt permissions and bounded HTML extraction. Imported text retains its source URL and fetch timestamp.
+- Faithfulness reports the proportion of fully supported claims with verified source quotes; it is not a probability of truth and does not measure completeness.

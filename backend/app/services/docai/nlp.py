@@ -7,6 +7,7 @@ from typing import Dict, List
 STOP = set("""a an the of to in on at for by with from and or is are was were be been being this that these those
 it its as what which who whom whose when where why how do does did shall will would can could may might must
 under over any all each per than then there their his her our your i we you he she they not no""".split())
+STOP.update("क्या है हैं था थी थे के की का में पर से और या यह वह को कब कहाँ कौन कितना कितनी कितने कृपया बताएं बताइए".split())
 _TOKEN = re.compile(r"\w+", re.UNICODE)
 _SENT_SPLIT = re.compile(r"(?<=[.!?।])\s+(?=[A-Z0-9\u0900-\u097F\u0C80-\u0CFF(\"'])")
 
@@ -16,6 +17,10 @@ def tokens(text: str) -> List[str]:
     for t in _TOKEN.findall(text.lower()):
         if t in STOP:
             continue
+        # Normalize common derivational forms so "repayment" can
+        # match source wording such as "repay".
+        if len(t) > 6 and t.endswith("ment"):
+            t = t[:-4]
         if len(t) > 3 and t.endswith("s") and not t.endswith("ss"):
             t = t[:-1]
         out.append(t)

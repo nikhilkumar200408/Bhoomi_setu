@@ -13,6 +13,8 @@ from datetime import date, datetime
 from typing import Dict, List, Optional
 
 from .nlp import sentence_spans
+from .date_conflicts import detect_date_conflicts
+from .rule_conflicts import detect_rule_conflicts
 
 TOPICS = ["interest", "penalty", "fee", "rent", "price", "consideration", "tax", "duty", "deposit",
           "premium", "tenure", "period", "area", "rate", "amount"]
@@ -80,13 +82,26 @@ def date_after(text: str, label_re: re.Pattern) -> Optional[str]:
     return None
 
 
+def _fact_topic(low: str) -> Optional[str]:
+    if re.search(r"\bprocessing\s+fees?\b", low):
+        return "processing fee"
+
+    if (
+        re.search(r"\b(?:overdue|late payment|delayed payment)\b", low)
+        and re.search(r"\b(?:fee|fees|penalty|penalties|charge|charges)\b", low)
+    ):
+        return "overdue charge"
+
+    return next((t for t in TOPICS if re.search(r"\b" + t, low)), None)
+
+
 def extract_facts(page: dict) -> List[dict]:
     text = page["text"]
     facts = []
     for s, e in sentence_spans(text):
         sent = text[s:e]
         low = sent.lower()
-        topic = next((t for t in TOPICS if re.search(r"\b" + t, low)), None)
+        topic = _fact_topic(low)
         if not topic:
             continue
         for unit, rx in PATTERNS:
@@ -229,8 +244,67 @@ def analyse(pages: List[dict], today: Optional[date] = None) -> dict:
                         "evidence_ids": [(ev_a if bs is a else ev_b)["evidence_id"], (ev_a if am is a else ev_b)["evidence_id"]],
                         "relationship_confidence": None,
                         "requires_human_review": st == "REVIEW_REQUIRED", "_doc_ids": [bs["document_id"], am["document_id"]]})
+    contradictions.extend(detect_date_conflicts(pages, now))
+    contradictions.extend(detect_rule_conflicts(pages, now))
     _flag_cycles(amendments)
+    _annotate_amendment_chains(amendments)
     return {"contradictions": contradictions, "amendments": amendments}
+
+
+def _annotate_amendment_chains(amendments: List[dict]) -> None:
+    """Attach deterministic chain provenance and mark an amendment superseded by its successor.
+
+    Only evidence-backed, non-review edges participate. Upload order is never used.
+    """
+    by_topic: Dict[str, List[dict]] = {}
+    for item in amendments:
+        by_topic.setdefault(item["topic"], []).append(item)
+
+    for topic, items in by_topic.items():
+        eligible = [x for x in items if x.get("status") in ("ACTIVE", "PENDING_EFFECTIVE_DATE")]
+        incoming = {x["amending_document_id"]: x for x in eligible}
+        outgoing = {x["base_document_id"]: x for x in eligible}
+
+        for item in eligible:
+            predecessor = incoming.get(item["base_document_id"])
+            successor = outgoing.get(item["amending_document_id"])
+            if (item.get("status") == "ACTIVE" and predecessor and predecessor is not item
+                    and predecessor.get("status") == "ACTIVE"):
+                predecessor["status"] = "SUPERSEDED"
+            item["previous_amendment_id"] = predecessor.get("amendment_id") if predecessor else None
+            item["successor_amendment_ids"] = (
+                [successor["amendment_id"]] if successor and successor is not item else []
+            )
+
+        # Resolve each edge to its earliest evidenced base document. Cycles have already
+        # been flagged and are excluded from this traversal.
+        for item in eligible:
+            root = item["base_document_id"]
+            depth = 1
+            seen = {item["amending_document_id"]}
+            while root in incoming:
+                prior = incoming[root]
+                candidate = prior["base_document_id"]
+                if candidate in seen:
+                    break
+                seen.add(candidate)
+                root = candidate
+                depth += 1
+            item["root_document_id"] = root
+            item["chain_depth"] = depth
+            item["chain_id"] = "chain_" + hashlib.sha1(
+                f"{topic}|{root}".encode()
+            ).hexdigest()[:10]
+
+    # Keep a consistent response shape for review-required edges too.
+    for item in amendments:
+        item.setdefault("previous_amendment_id", None)
+        item.setdefault("successor_amendment_ids", [])
+        item.setdefault("root_document_id", item["base_document_id"])
+        item.setdefault("chain_depth", 1)
+        item.setdefault("chain_id", "chain_" + hashlib.sha1(
+            f"{item['topic']}|{item['base_document_id']}".encode()
+        ).hexdigest()[:10])
 
 
 def _flag_cycles(amendments: List[dict]) -> None:

@@ -5,11 +5,12 @@ from typing import Dict, List
 from ...models import gen_uuid
 from . import facts as F
 from .nlp import bm25_rank, sentence_spans, tokens
+from .embeddings import reciprocal_rank_fusion
 
-MIN_COVERAGE = 0.5      # share of question terms a passage must contain to be used as evidence
+MIN_COVERAGE = 0.5      # upper bound; long multi-part questions use an adaptive threshold
 PARTIAL_BELOW = 0.8     # coverage below this -> PARTIALLY_SUPPORTED
-MAX_CLAIMS = 3
-FAITHFULNESS_METHOD = "verified_claim_ratio"
+MAX_CLAIMS = 5
+FAITHFULNESS_METHOD = "verified_supported_claim_ratio"
 
 
 def _now() -> str:
@@ -17,21 +18,84 @@ def _now() -> str:
 
 
 def build_chunks(pages: List[dict]) -> List[dict]:
+    """Build evidence chunks without trusting unreviewed OCR text.
+
+    Native PDF text keeps its existing behavior. OCR chunks are created only
+    from source-matched layout lines with confidence >= 0.60 and no review flag.
+    Chunk offsets always refer to the original page text for quote verification.
+    """
     chunks = []
     for p in pages:
-        for s, e in sentence_spans(p["text"]):
-            chunks.append({"page": p, "start": s, "end": e, "tokens": tokens(p["text"][s:e])})
+        page_text = p.get("text") or ""
+        if p.get("source_type") != "OCR_TEXT":
+            for s, e in sentence_spans(page_text):
+                chunks.append({
+                    "page": p, "start": s, "end": e,
+                    "tokens": tokens(page_text[s:e]),
+                })
+            continue
+
+        blocks = p.get("layout_blocks") or []
+        cursor = 0
+        for block in blocks:
+            line = " ".join(str(block.get("text") or "").split())
+            if not line:
+                continue
+            try:
+                confidence = float(block.get("confidence", 0))
+            except (TypeError, ValueError):
+                continue
+            if confidence < 0.60 or block.get("review_required", False):
+                continue
+
+            # Match the OCR line back to the original page text. Never create
+            # evidence from a line whose exact source position cannot be found.
+            start = page_text.find(line, cursor)
+            if start < 0:
+                start = page_text.find(line)
+            if start < 0:
+                continue
+            end = start + len(line)
+            cursor = end
+
+            for local_start, local_end in sentence_spans(line):
+                s, e = start + local_start, start + local_end
+                if s < e:
+                    chunks.append({
+                        "page": p, "start": s, "end": e,
+                        "tokens": tokens(page_text[s:e]),
+                    })
     return chunks
 
 
-def faithfulness(claims: List[dict]):
+def faithfulness(claims: List[dict], evidence: List[dict] | None = None):
+    """Share of claims that are both fully supported and backed by verified source quotes.
+
+    A quote existing in a source is citation integrity, not proof that it answers the
+    question. Partial, contradicted, and insufficient-evidence claims stay in the
+    denominator but do not increase the score. This prevents extractive quotes from
+    producing a misleading 100% score when they only partially answer a question.
+    """
     if not claims:
         return None
-    return round(sum(c["status"] == "SUPPORTED" for c in claims) / len(claims), 4)
+    evidence_by_id = {item.get("evidence_id"): item for item in (evidence or [])}
+    grounded = 0
+    for claim in claims:
+        claim_text = " ".join(str(claim.get("text", "")).split()).casefold()
+        cited = [evidence_by_id.get(eid) for eid in claim.get("evidence_ids", [])]
+        if not claim_text or not cited or any(item is None for item in cited):
+            continue
+        if claim.get("status") == "SUPPORTED" and not claim.get("correction") and all(
+            item.get("verification", {}).get("quote_found_in_source") is True
+            and claim_text in " ".join(str(item.get("quote", "")).split()).casefold()
+            for item in cited
+        ):
+            grounded += 1
+    return round(grounded / len(claims), 4)
 
 
 def answer_question(question: str, pages: List[dict], doc_ids: List[str], include_superseded: bool = True,
-                    max_evidence: int = 5) -> dict:
+                    max_evidence: int = 5, vector_scores: Dict[tuple, float] | None = None) -> dict:
     q_terms = sorted(set(tokens(question)))
     chunks = build_chunks(pages)
     analysis = F.analyse(pages)
@@ -43,20 +107,50 @@ def answer_question(question: str, pages: List[dict], doc_ids: List[str], includ
                 if ev["relation"] != "SUPPORTS":
                     replaced_ev[ev["evidence_id"]] = c
 
-    scored = []
+    chunk_map, lexical_scores = {}, {}
+    for c in chunks:
+        p = c["page"]
+        key = (p["document_id"], p["page"], c["start"], c["end"])
+        chunk_map[key] = c
+    bm25_ranking, vector_ranking = [], []
     if q_terms and chunks:
         bm = bm25_rank(q_terms, [c["tokens"] for c in chunks])
-        for c, s in zip(chunks, bm):
-            cov = len(set(q_terms) & set(c["tokens"])) / len(q_terms)
-            if cov >= MIN_COVERAGE and s > 0:
-                scored.append((s, cov, c))
+        for c, score in zip(chunks, bm):
+            p = c["page"]
+            key = (p["document_id"], p["page"], c["start"], c["end"])
+            coverage = len(set(q_terms) & set(c["tokens"])) / len(q_terms)
+            # Long comparison questions contain several independent topics. A fixed 50%
+            # term-overlap gate rejects every individual clause in those questions. Require
+            # at least two matching terms (or 50% for very short questions), while keeping
+            # BM25 ranking and verbatim quote verification as the evidence safeguards.
+            min_coverage = min(MIN_COVERAGE, max(0.15, 2.0 / len(q_terms)))
+            if coverage >= min_coverage and score > 0:
+                lexical_scores[key] = (score, coverage)
+        bm25_ranking = [key for key, _ in sorted(lexical_scores.items(), key=lambda item: (-item[1][0], item[0]))[:50]]
+    if vector_scores:
+        vector_ranking = [key for key, score in sorted(vector_scores.items(), key=lambda item: (-item[1], item[0]))
+                          if key in chunk_map and score >= 0.35
+                          and len(set(q_terms) & set(chunk_map[key]["tokens"])) / max(1, len(q_terms)) >= 0.25][:50]
+    fused = reciprocal_rank_fusion([[repr(key) for key in bm25_ranking], [repr(key) for key in vector_ranking]])
+    scored = []
+    key_lookup = {repr(candidate): candidate for candidate in chunk_map}
+    for key, fused_score in fused.items():
+        chunk_key = key_lookup.get(key)
+        if chunk_key is None:
+            continue
+        c = chunk_map[chunk_key]
+        coverage = len(set(q_terms) & set(c["tokens"])) / max(1, len(q_terms))
+        semantic_only = chunk_key not in lexical_scores
+        scored.append((fused_score, coverage, c, semantic_only))
     scored.sort(key=lambda x: (-x[0], x[2]["page"]["document_id"], x[2]["page"]["page"], x[2]["start"]))
 
     claims, evidences = [], {}
-    for s, cov, c in scored:
+    for s, cov, c, semantic_only in scored:
         if len(claims) >= min(MAX_CLAIMS, max_evidence):
             break
         ev = F.evidence(c["page"], c["start"], c["end"], "SUPPORTS")
+        if c["page"].get("source_url"):
+            ev["source_url"] = c["page"]["source_url"]
         if not ev["verification"]["quote_found_in_source"]:
             continue  # never emit a citation the backend could not verify
         if ev["evidence_id"] in evidences:
@@ -64,8 +158,10 @@ def answer_question(question: str, pages: List[dict], doc_ids: List[str], includ
         old = replaced_ev.get(ev["evidence_id"])
         if old and not include_superseded:
             continue
-        status = "SUPPORTED" if cov >= PARTIAL_BELOW else "PARTIALLY_SUPPORTED"
+        status = "SUPPORTED" if cov >= PARTIAL_BELOW and not semantic_only else "PARTIALLY_SUPPORTED"
         explanation = f"Passage contains {round(cov * 100)}% of the question's key terms."
+        if semantic_only:
+            explanation += " Retrieved by semantic similarity only; human verification is required."
         if old:
             status, ev["relation"] = "CONTRADICTED", "CONTRADICTS"
             explanation = ("Superseded: an amendment effective "
@@ -89,9 +185,17 @@ def answer_question(question: str, pages: List[dict], doc_ids: List[str], includ
         if conflicts:
             answer += " Note: the selected documents contain conflicting values on this topic; see conflicts."
         missing = []
+    matched_question_terms = set()
+    for claim in claims:
+        matched_question_terms.update(set(q_terms) & set(tokens(claim["text"])))
+    question_coverage = round(len(matched_question_terms) / len(q_terms), 4) if q_terms else 0.0
+
     return {"answer_id": "ans_" + gen_uuid()[:12], "question": question, "answer": answer, "abstained": abstained,
-            "faithfulness_score": 0.0 if abstained else faithfulness(claims),
-            "faithfulness_method": FAITHFULNESS_METHOD, "claims": claims,
+            "faithfulness_score": faithfulness(claims, list(evidences.values())),
+            "question_coverage_score": question_coverage,
+            "question_terms_matched": sorted(matched_question_terms),
+            "faithfulness_method": FAITHFULNESS_METHOD,
+            "retrieval_mode": "HYBRID_BM25_VECTOR" if vector_scores else "BM25", "claims": claims,
             "evidence": list(evidences.values()), "missing_evidence": missing, "conflicts": conflicts,
             "created_at": _now()}
 
@@ -111,7 +215,7 @@ def reverify(answer: dict, pages_by_key: Dict[tuple, dict], verify_quotes: bool,
             if not all(ev_ok.get(i) for i in c["evidence_ids"]):
                 c["status"], c["requires_human_review"] = "INSUFFICIENT_EVIDENCE", True
                 c["explanation"] = "Cited quote could not be verified on the cited page."
-    answer["faithfulness_score"] = 0.0 if answer["abstained"] else faithfulness(answer["claims"])
+    answer["faithfulness_score"] = faithfulness(answer["claims"], answer["evidence"])
     return {"answer_id": answer["answer_id"], "verification_status": "COMPLETED",
             "faithfulness_score": answer["faithfulness_score"], "faithfulness_method": FAITHFULNESS_METHOD,
             "claims_checked": len(answer["claims"]),

@@ -5,9 +5,9 @@ import { ToastProvider } from "@/components/ui/Toast";
 import { LanguageProvider } from "@/lib/language";
 
 export const metadata: Metadata = {
-  title: "BhoomiTrust AI — Land Record Digitization & Validation",
+  title: "BhoomiTrust AI — Evidence-Based Document Intelligence",
   description:
-    "AI-powered land record digitization and validation system. Extract, validate, score, verify, trust.",
+    "Evidence-based Document AI for OCR, document retrieval, contradiction detection, and source-cited answers.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

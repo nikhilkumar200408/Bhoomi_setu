@@ -16,6 +16,7 @@ poppler-utils (for PDF rasterization). See backend/README or .env.example.
 """
 import logging
 import os
+import re
 from typing import List, Optional
 
 import cv2
@@ -36,23 +37,45 @@ def _ocr_with_lang(processed: np.ndarray, lang: str) -> dict:
     )
 
 
-def _score(data: dict) -> float:
-    confs = [float(c) for c in data["conf"] if str(c).strip() not in ("", "-1") and float(c) >= 0]
+def _score(data: dict, lang: str) -> float:
+    """Score OCR confidence while penalizing output in the wrong script."""
+    confs = []
+    for value in data.get("conf", []):
+        try:
+            confidence = float(value)
+        except (TypeError, ValueError):
+            continue
+        if confidence >= 0:
+            confs.append(confidence)
+
     if not confs:
         return -1.0
-    # Reward both average confidence and how much text was actually found —
-    # a language model that "gives up" with a handful of high-confidence
-    # tokens should not beat one that reads the whole page.
-    return (sum(confs) / len(confs)) * min(1.0, len(confs) / 20)
+
+    text = " ".join(str(value) for value in data.get("text", []))
+    letters = [char for char in text if char.isalpha()]
+    if not letters:
+        return -1.0
+
+    def matches_script(char: str) -> bool:
+        code = ord(char)
+        if lang == "eng":
+            return (0x0041 <= code <= 0x024F)
+        if lang == "hin":
+            return 0x0900 <= code <= 0x097F
+        if lang == "kan":
+            return 0x0C80 <= code <= 0x0CFF
+        return False
+
+    script_ratio = sum(matches_script(char) for char in letters) / len(letters)
+    confidence_score = (sum(confs) / len(confs)) * min(1.0, len(confs) / 20)
+
+    # Keep a small fallback weight so mixed-script documents are not
+    # automatically discarded, but strongly prefer the matching script.
+    return confidence_score * (0.15 + 0.85 * script_ratio)
 
 
 def _best_language_pass(processed: np.ndarray) -> dict:
-    """Land record documents are typically single-script per page. Running
-    all Indic language models simultaneously (lang='eng+hin+kan') makes
-    Tesseract hallucinate cross-script noise on every line. Instead we OCR
-    once per candidate language and keep whichever pass actually read the
-    page best — this is what 'multilingual document recognition' means in
-    practice: detect-then-read, not read-all-scripts-at-once."""
+    """Run separate OCR passes and prefer the candidate matching the output script."""
     best_data, best_score = None, -1.0
     for lang in CANDIDATE_LANGS:
         try:
@@ -62,11 +85,37 @@ def _best_language_pass(processed: np.ndarray) -> dict:
         except Exception as e:  # noqa: BLE001
             logger.warning("OCR pass failed for lang=%s: %s", lang, e)
             continue
-        score = _score(data)
+        score = _score(data, lang)
+        logger.debug("OCR candidate lang=%s score=%.2f", lang, score)
         if score > best_score:
             best_data, best_score = data, score
-    return best_data or {"text": [], "conf": [], "left": [], "top": [], "width": [], "height": [],
-                          "block_num": [], "par_num": [], "line_num": []}
+
+    return best_data or {
+        "text": [], "conf": [], "left": [], "top": [], "width": [],
+        "height": [], "block_num": [], "par_num": [], "line_num": [],
+    }
+
+
+def _correct_page_orientation(bgr_image: np.ndarray) -> np.ndarray:
+    """Use Tesseract OSD to correct 90/180/270-degree page rotations."""
+    try:
+        rgb = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
+        osd = pytesseract.image_to_osd(
+            rgb, output_type=pytesseract.Output.STRING, config="--psm 0"
+        )
+        match = re.search(r"Rotate:\s*(0|90|180|270)", osd)
+        rotation = int(match.group(1)) if match else 0
+
+        if rotation == 90:
+            return cv2.rotate(bgr_image, cv2.ROTATE_90_CLOCKWISE)
+        if rotation == 180:
+            return cv2.rotate(bgr_image, cv2.ROTATE_180)
+        if rotation == 270:
+            return cv2.rotate(bgr_image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    except Exception as exc:  # noqa: BLE001 - OSD may fail on short/noisy pages
+        logger.info("Page orientation detection unavailable; using original image: %s", exc)
+
+    return bgr_image
 
 
 def _load_pages(file_path: str) -> List[np.ndarray]:
@@ -188,6 +237,7 @@ class TesseractOCRProvider(OCRProvider):
 
         all_spans: List[OCRSpan] = []
         for page_index, page_bgr in enumerate(pages, start=1):
+            page_bgr = _correct_page_orientation(page_bgr)
             processed = preprocess_image(page_bgr)
             try:
                 data = _best_language_pass(processed)

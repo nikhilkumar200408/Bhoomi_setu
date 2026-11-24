@@ -7,14 +7,15 @@ from httpx import ASGITransport, AsyncClient
 
 from app import models
 from app.auth import hash_password
-from app.database import users_collection
+from app.database import users_collection, chat_sessions_collection
 from app.main import app
 from app.services.docai import facts as F
 from app.services.docai import qa
+from app.services.docai.calculations import calculate_financial_value
 
 SAMPLE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
 USERS = [("op_a", "Operator@123", "DATA_ENTRY_OPERATOR"), ("op_b", "Operator@123", "DATA_ENTRY_OPERATOR"),
-         ("officer", "Officer@123", "REVENUE_OFFICER"), ("admin", "Admin@123", "ADMIN")]
+         ("officer", "Officer@123", "REVENUE_OFFICER"), ("admin", "Admin@123", "ADMIN"), ("web_import_disabled", "WebImport@123", "DATA_ENTRY_OPERATOR")]
 
 BASE = ("Loan Agreement. Under Clause 4, interest shall be eight percent per annum on the principal. "
         "The borrower shall repay within five years.")
@@ -70,30 +71,20 @@ async def ask(client, h, question, ids, **kw):
 
 # ------------------------------------------------------------------ ownership (security)
 @pytest.mark.asyncio
-async def test_documents_records_audit_are_isolated_between_operators(client):
+async def test_documents_are_isolated_between_operators(client):
     a, b, officer = await hdr(client, "op_a"), await hdr(client, "op_b"), await hdr(client, "officer")
-    with open(os.path.join(SAMPLE_DIR, "english_land_record.png"), "rb") as f:
-        r = await client.post("/api/documents/upload", files={"file": ("x.png", f, "image/png")}, headers=a)
-    doc_id = r.json()["id"]
-    rec = await client.post(f"/api/documents/{doc_id}/process", headers=a)
-    assert rec.status_code == 200, rec.text
-    rec_id = rec.json()["id"]
+    doc_id = await upload_pdf(client, a, "private-agreement.pdf", BASE)
 
+    assert len((await client.get("/api/documents", headers=a)).json()) == 1
     assert (await client.get("/api/documents", headers=b)).json() == []
-    for path in (f"/api/documents/{doc_id}", f"/api/documents/{doc_id}/file", f"/api/records/{rec_id}",
-                 f"/api/records/{rec_id}/audit"):
-        assert (await client.get(path, headers=b)).status_code == 404, path
-    assert (await client.post(f"/api/documents/{doc_id}/process", headers=b)).status_code == 404
-    assert (await client.patch(f"/api/records/{rec_id}/fields/owner_name", json={"new_value": "Hacked", "reason": "x"}, headers=b)).status_code == 404
-    assert (await client.get("/api/records", headers=b)).json() == []
-    assert (await client.get("/api/audit", headers=b)).json() == []
-    assert (await client.get("/api/search", params={"q": "a"}, headers=b)).json() == []
-    assert (await client.get("/api/dashboard/stats", headers=b)).json()["records_extracted"] == 0
-    # owner and reviewer roles keep access
-    assert (await client.get(f"/api/records/{rec_id}", headers=a)).status_code == 200
-    assert (await client.get(f"/api/records/{rec_id}", headers=officer)).status_code == 200
-    assert len((await client.get("/api/documents", headers=officer)).json()) == 1
+    assert (await client.get(f"/api/documents/{doc_id}", headers=b)).status_code == 404
+    assert (await client.get(f"/api/documents/{doc_id}/file", headers=b)).status_code == 404
+    assert (await client.post(f"/api/document-ai/documents/{doc_id}/index", headers=b)).status_code == 404
 
+    # Privileged reviewer can access operator documents.
+    assert (await client.get(f"/api/documents/{doc_id}", headers=officer)).status_code == 200
+    assert len((await client.get("/api/documents", headers=officer)).json()) == 1
+    assert (await client.get("/api/audit", headers=b)).json() == []
 
 @pytest.mark.asyncio
 async def test_document_ai_rejects_foreign_documents_and_roles(client):
@@ -122,7 +113,8 @@ async def test_index_ask_cites_real_pages_and_every_quote_is_on_the_page(client)
     r = await ask(client, a, "What is the interest rate per annum?", [d1])
     body = r.json()
     assert r.status_code == 200 and not body["abstained"]
-    assert body["faithfulness_method"] == "verified_claim_ratio"
+    assert body["faithfulness_method"] == "verified_supported_claim_ratio"
+    assert 0 < body["question_coverage_score"] <= 1
     ev = {e["evidence_id"]: e for e in body["evidence"]}
     claim = body["claims"][0]
     e = ev[claim["evidence_ids"][0]]
@@ -144,6 +136,7 @@ async def test_abstains_when_evidence_is_missing_and_validates_input(client):
     await index(client, a, doc)
     body = (await ask(client, a, "What is the vehicle registration penalty?", [doc])).json()
     assert body["abstained"] and body["claims"] == [] and body["evidence"] == [] and body["missing_evidence"]
+    assert body["question_coverage_score"] == 0
     assert (await ask(client, a, "   ", [doc])).status_code == 400
     assert (await ask(client, a, "interest", [unindexed])).status_code == 409
     assert (await client.post("/api/document-ai/qa/ask", json={"question": "x", "document_ids": []}, headers=a)).status_code == 422
@@ -201,6 +194,25 @@ def test_different_plots_are_not_contradictions():
     assert F.analyse(pages)["contradictions"] == []
 
 
+def test_amendment_chain_marks_prior_version_superseded_and_tracks_root():
+    amendments = [
+        {"amendment_id": "amd_ab", "base_document_id": "A", "amending_document_id": "B",
+         "topic": "interest (percent)", "status": "ACTIVE", "requires_human_review": False},
+        {"amendment_id": "amd_bc", "base_document_id": "B", "amending_document_id": "C",
+         "topic": "interest (percent)", "status": "ACTIVE", "requires_human_review": False},
+    ]
+    F._flag_cycles(amendments)
+    F._annotate_amendment_chains(amendments)
+
+    first, second = amendments
+    assert first["status"] == "SUPERSEDED"
+    assert second["status"] == "ACTIVE"
+    assert first["chain_id"] == second["chain_id"]
+    assert second["root_document_id"] == "A" and second["chain_depth"] == 2
+    assert second["previous_amendment_id"] == "amd_ab"
+    assert first["successor_amendment_ids"] == ["amd_bc"]
+
+
 def test_amendment_cycles_are_flagged():
     amds = [{"base_document_id": "A", "amending_document_id": "B", "status": "ACTIVE", "requires_human_review": False},
             {"base_document_id": "B", "amending_document_id": "A", "status": "ACTIVE", "requires_human_review": False}]
@@ -209,10 +221,28 @@ def test_amendment_cycles_are_flagged():
 
 
 # ------------------------------------------------------------------ scoring / quote checks / review
-def test_faithfulness_formula_and_quote_verification():
-    claims = [{"status": s} for s in ("SUPPORTED", "PARTIALLY_SUPPORTED", "CONTRADICTED", "INSUFFICIENT_EVIDENCE")]
-    assert qa.faithfulness(claims) == 0.25
-    assert qa.faithfulness([]) is None
+def test_faithfulness_uses_verified_source_quotes_not_retrieval_status():
+    claims = [
+        {"status": "SUPPORTED", "text": "The annual rate is 8%.", "evidence_ids": ["ev1"]},
+        {"status": "PARTIALLY_SUPPORTED", "text": "The principal is INR 100,000.", "evidence_ids": ["ev2"]},
+        {"status": "CONTRADICTED", "text": "The fee is 2%.", "evidence_ids": ["ev3"]},
+        {"status": "INSUFFICIENT_EVIDENCE", "text": "Unsupported claim", "evidence_ids": ["ev4"]},
+    ]
+    evidence = [
+        {"evidence_id": "ev1", "quote": "The annual rate is 8%.", "verification": {"quote_found_in_source": True}},
+        {"evidence_id": "ev2", "quote": "The principal is INR 100,000.", "verification": {"quote_found_in_source": True}},
+        {"evidence_id": "ev3", "quote": "The fee is 2%.", "verification": {"quote_found_in_source": True}},
+        {"evidence_id": "ev4", "quote": "Different source text.", "verification": {"quote_found_in_source": True}},
+    ]
+    # Only fully supported claims count; partial/contradicted claims remain in the denominator.
+    assert qa.faithfulness(claims, evidence) == 0.25
+    evidence[1]["verification"]["quote_found_in_source"] = False
+    assert qa.faithfulness(claims, evidence) == 0.25
+    claims[1]["status"] = "SUPPORTED"
+    assert qa.faithfulness(claims, evidence) == 0.25
+    claims[0]["correction"] = {"corrected_text": "Manual correction"}
+    assert qa.faithfulness(claims, evidence) == 0.0
+    assert qa.faithfulness([], evidence) is None
     assert F.verify_quote("a b c", "a  b") == (0, 3) and F.verify_quote("abc", "abd") is None
 
 
@@ -235,6 +265,28 @@ async def test_human_review_requires_officer_reason_and_keeps_evidence(client):
 
 
 @pytest.mark.asyncio
+async def test_reviewer_can_correct_claim_without_mutating_original_evidence(client):
+    a, officer = await hdr(client, "op_a"), await hdr(client, "officer")
+    doc = await upload_pdf(client, a, "loan_agreement.pdf", BASE)
+    await index(client, a, doc)
+    body = (await ask(client, a, "interest rate", [doc])).json()
+    claim = body["claims"][0]
+    before_evidence = body["evidence"]
+    url = f"/api/document-ai/claims/{claim['claim_id']}/correct"
+    denied = await client.post(url, json={"corrected_text": "Corrected rate is 8 percent.", "reason": "Reviewed original clause."}, headers=a)
+    assert denied.status_code == 403
+    saved = await client.post(url, json={"corrected_text": "Reviewed rate: 8 percent per annum.", "reason": "Corrected wording after manual clause review."}, headers=officer)
+    assert saved.status_code == 200 and saved.json()["source_evidence_unchanged"] is True
+    after = (await client.get(f"/api/document-ai/answers/{body['answer_id']}", headers=officer)).json()
+    assert after["claims"][0]["text"] == claim["text"]
+    assert after["claims"][0]["correction"]["corrected_text"] == "Reviewed rate: 8 percent per annum."
+    assert after["evidence"] == before_evidence
+    history = await client.get(f"/api/document-ai/answers/{body['answer_id']}/audit", headers=officer)
+    assert history.status_code == 200
+    assert any(item["action"] == "DOCAI_CLAIM_CORRECTION" for item in history.json()["items"])
+
+
+@pytest.mark.asyncio
 async def test_invalid_upload_and_pagination_errors(client):
     a = await hdr(client, "op_a")
     r = await client.post("/api/documents/upload", files={"file": ("evil.exe", b"MZ", "application/octet-stream")}, headers=a)
@@ -244,3 +296,263 @@ async def test_invalid_upload_and_pagination_errors(client):
     assert (await client.get(f"/api/document-ai/contradictions?document_ids={doc}&limit=0", headers=a)).status_code == 400
     assert (await client.get(f"/api/document-ai/contradictions?document_ids={doc}&status=BAD", headers=a)).status_code == 400
     assert (await client.get("/api/document-ai/contradictions", headers=a)).status_code == 422
+
+
+def test_semantic_only_retrieval_is_never_auto_supported():
+    page = {
+        "document_id": "doc-semantic",
+        "filename": "loan_terms.pdf",
+        "page": 3,
+        "source_type": "PDF_TEXT",
+        "text": "Interest is charged at eight percent per annum.",
+    }
+    chunk = qa.build_chunks([page])[0]
+    key = (page["document_id"], page["page"], chunk["start"], chunk["end"])
+    result = qa.answer_question(
+        "interest rate amount percentage",
+        [page],
+        ["doc-semantic"],
+        vector_scores={key: 0.91},
+    )
+    assert result["retrieval_mode"] == "HYBRID_BM25_VECTOR"
+    assert not result["abstained"]
+    assert result["claims"][0]["status"] == "PARTIALLY_SUPPORTED"
+    assert result["claims"][0]["requires_human_review"] is True
+    assert result["evidence"][0]["page_number"] == 3
+    assert result["evidence"][0]["verification"]["quote_found_in_source"] is True
+
+
+
+def test_labelled_due_date_conflict_has_verbatim_evidence_and_no_guessed_winner():
+    pages = [
+        {"document_id": "loan-a", "filename": "loan_a.pdf", "page": 2, "source_type": "PDF_TEXT",
+         "text": "The payment due date is 1 March 2026."},
+        {"document_id": "loan-b", "filename": "loan_b.pdf", "page": 4, "source_type": "PDF_TEXT",
+         "text": "The payment due date is 15 March 2026."},
+    ]
+    result = F.analyse(pages, today=F.date(2026, 2, 1))
+    conflicts = [x for x in result["contradictions"] if x["topic"] == "due date"]
+    assert len(conflicts) == 1
+    conflict = conflicts[0]
+    assert conflict["status"] == "OPEN"
+    assert conflict["resolution"]["controlling_document_id"] is None
+    assert conflict["resolution"]["requires_human_review"] is True
+    assert {e["document_id"] for e in conflict["evidence"]} == {"loan-a", "loan-b"}
+    assert all(e["verification"]["quote_found_in_source"] for e in conflict["evidence"])
+    assert "1 March 2026" in conflict["evidence"][0]["quote"] or "1 March 2026" in conflict["evidence"][1]["quote"]
+
+
+def test_labelled_date_conflicts_do_not_compare_different_clauses():
+    pages = [
+        {"document_id": "contract-a", "filename": "contract_a.pdf", "page": 1, "source_type": "PDF_TEXT",
+         "text": "Under Clause 4, the payment due date is 1 March 2026."},
+        {"document_id": "contract-b", "filename": "contract_b.pdf", "page": 1, "source_type": "PDF_TEXT",
+         "text": "Under Clause 9, the payment due date is 15 March 2026."},
+    ]
+    result = F.analyse(pages, today=F.date(2026, 2, 1))
+    assert not [x for x in result["contradictions"] if x["topic"] == "due date"]
+
+
+def test_eligibility_age_threshold_conflict_is_flagged_with_both_quotes():
+    pages = [
+        {"document_id": "policy-a", "filename": "policy_a.pdf", "page": 2, "source_type": "PDF_TEXT",
+         "text": "Applicants must meet a minimum age of 21 years."},
+        {"document_id": "policy-b", "filename": "policy_b.pdf", "page": 3, "source_type": "PDF_TEXT",
+         "text": "The minimum age is 18 years."},
+    ]
+    result = F.analyse(pages)
+    conflicts = [x for x in result["contradictions"] if x["topic"] == "minimum age"]
+    assert len(conflicts) == 1
+    conflict = conflicts[0]
+    assert conflict["status"] == "OPEN"
+    assert conflict["resolution"]["controlling_document_id"] is None
+    assert conflict["resolution"]["requires_human_review"] is True
+    assert {e["document_id"] for e in conflict["evidence"]} == {"policy-a", "policy-b"}
+    assert all(e["quote"] and e["verification"]["page_verified"] for e in conflict["evidence"])
+
+
+def test_obligation_notice_period_conflict_is_detected():
+    pages = [
+        {"document_id": "contract-a", "filename": "contract_a.pdf", "page": 1, "source_type": "PDF_TEXT",
+         "text": "The notice period is 30 days."},
+        {"document_id": "contract-b", "filename": "contract_b.pdf", "page": 1, "source_type": "PDF_TEXT",
+         "text": "The notice period shall be 60 days."},
+    ]
+    result = F.analyse(pages)
+    conflicts = [x for x in result["contradictions"] if x["topic"] == "notice period"]
+    assert len(conflicts) == 1
+    assert {e["document_id"] for e in conflicts[0]["evidence"]} == {"contract-a", "contract-b"}
+    assert conflicts[0]["resolution"]["requires_human_review"] is True
+
+
+def test_eligibility_thresholds_for_different_clauses_are_not_compared():
+    pages = [
+        {"document_id": "policy-a", "filename": "policy_a.pdf", "page": 1, "source_type": "PDF_TEXT",
+         "text": "Under Clause 4, the minimum age is 21 years."},
+        {"document_id": "policy-b", "filename": "policy_b.pdf", "page": 1, "source_type": "PDF_TEXT",
+         "text": "Under Clause 9, the minimum age is 18 years."},
+    ]
+    result = F.analyse(pages)
+    assert not [x for x in result["contradictions"] if x["topic"] == "minimum age"]
+
+
+def test_processing_fee_and_overdue_charge_are_not_false_contradictions():
+    pages = [
+        {"document_id": "policy-a", "filename": "policy_a.pdf", "page": 1,
+         "source_type": "PDF_TEXT",
+         "text": "The processing fee is 0.75 percent."},
+        {"document_id": "policy-b", "filename": "policy_b.pdf", "page": 1,
+         "source_type": "PDF_TEXT",
+         "text": "The processing fee is 1.00 percent."},
+        {"document_id": "policy-c", "filename": "policy_c.pdf", "page": 1,
+         "source_type": "PDF_TEXT",
+         "text": "The overdue instalment fee is 1.50 percent."},
+    ]
+
+    result = F.analyse(pages)
+
+    processing_conflicts = [
+        x for x in result["contradictions"]
+        if x["topic"].startswith("processing fee")
+    ]
+    overdue_conflicts = [
+        x for x in result["contradictions"]
+        if x["topic"].startswith("overdue charge")
+    ]
+
+    assert len(processing_conflicts) == 1
+    assert overdue_conflicts == []
+
+
+
+def test_financial_calculations_return_formula_and_working():
+    simple = calculate_financial_value("simple_interest", 100000, 8, 2, "years")
+    assert simple["result"] == {"interest": 16000.0, "total_amount": 116000.0}
+    assert simple["formula"] == "SI = P × R × T / 100"
+    assert "100000" in simple["working"]
+    assert simple["input_source"] == "USER_PROVIDED"
+
+    emi = calculate_financial_value("emi", 120000, 0, 12, "months")
+    assert emi["result"]["monthly_emi"] == 10000.0
+    assert emi["result"]["total_payable"] == 120000.0
+
+    compound = calculate_financial_value("compound_interest", 100000, 12, 1, "years", 12)
+    assert compound["result"]["total_amount"] > 112000.0
+
+
+def test_financial_calculator_rejects_invalid_inputs():
+    import pytest
+    with pytest.raises(ValueError):
+        calculate_financial_value("simple_interest", 0, 8, 2, "years")
+    with pytest.raises(ValueError):
+        calculate_financial_value("unknown", 100000, 8, 2, "years")
+
+
+
+@pytest.mark.asyncio
+async def test_phase8_hindi_response_language_and_calculator_api(client):
+    operator = await hdr(client, "op_a")
+
+    calc = await client.post(
+        "/api/document-ai/calculate",
+        json={
+            "calculation_type": "simple_interest",
+            "principal": 100000,
+            "annual_rate_percent": 8,
+            "duration_value": 2,
+            "duration_unit": "years",
+        },
+        headers=operator,
+    )
+    assert calc.status_code == 200, calc.text
+    assert calc.json()["result"]["interest"] == 16000.0
+    assert calc.json()["input_source"] == "USER_PROVIDED"
+
+    doc = await upload_pdf(client, operator, "loan_agreement.pdf", BASE)
+    await index(client, operator, doc)
+    response = await ask(client, operator, "interest rate", [doc], language="hi")
+    assert response.status_code == 200, response.text
+    assert response.json()["response_language"] == "hi"
+    assert response.json()["evidence"][0]["verification"]["quote_found_in_source"] is True
+
+
+
+def test_hindi_question_retrieves_hindi_source_passage_with_verified_quote():
+    page = {
+        "document_id": "doc-hindi",
+        "filename": "policy_hindi.pdf",
+        "page": 1,
+        "source_type": "PDF_TEXT",
+        "text": "वार्षिक ब्याज दर आठ प्रतिशत है।",
+    }
+    result = qa.answer_question("वार्षिक ब्याज दर क्या है?", [page], ["doc-hindi"])
+    assert not result["abstained"]
+    assert result["claims"][0]["status"] == "SUPPORTED"
+    assert result["evidence"][0]["quote"] == page["text"]
+    assert result["evidence"][0]["verification"]["quote_found_in_source"] is True
+    assert result["faithfulness_score"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_webpage_import_is_disabled_until_admin_allowlist_is_configured(client):
+    user = await hdr(client, "web_import_disabled")
+    response = await client.post(
+        "/api/document-ai/sources/webpage/import",
+        json={"url": "https://example.com/terms"},
+        headers=user,
+    )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "WEB_IMPORT_DISABLED"
+
+
+# ------------------------------------------------------------------ persistent RAG chat
+@pytest.mark.asyncio
+async def test_chat_persists_evidence_backed_turns_and_contextual_followups(client):
+    a = await hdr(client, "op_a")
+    doc = await upload_pdf(client, a, "loan_agreement.pdf", BASE)
+    await index(client, a, doc)
+
+    first = await client.post("/api/chat/messages", headers=a, json={
+        "question": "What is the interest rate?",
+        "document_ids": [doc],
+        "language": "en",
+    })
+    assert first.status_code == 200, first.text
+    body = first.json()
+    session_id = body["session_id"]
+    assert body["answer"]["evidence"]
+    assert body["assistant_message"]["answer"]["evidence"][0]["verification"]["quote_found_in_source"]
+
+    followup = await client.post("/api/chat/messages", headers=a, json={
+        "session_id": session_id,
+        "question": "What about its repayment period?",
+        "document_ids": [doc],
+        "language": "en",
+    })
+    assert followup.status_code == 200, followup.text
+    assert followup.json()["answer"]["contextual_follow_up"] is True
+
+    detail = await client.get(f"/api/chat/sessions/{session_id}", headers=a)
+    assert detail.status_code == 200
+    assert len(detail.json()["messages"]) == 4
+    assert detail.json()["messages"][-1]["answer"]["evidence"]
+
+    listing = await client.get("/api/chat/sessions", headers=a)
+    assert listing.status_code == 200
+    assert listing.json()["items"][0]["id"] == session_id
+
+
+@pytest.mark.asyncio
+async def test_chat_sessions_are_private_and_delete_is_owner_scoped(client):
+    a, b = await hdr(client, "op_a"), await hdr(client, "op_b")
+    doc = await upload_pdf(client, a, "loan_agreement.pdf", BASE)
+    await index(client, a, doc)
+    created = await client.post("/api/chat/messages", headers=a, json={
+        "question": "What is the interest rate?", "document_ids": [doc]
+    })
+    session_id = created.json()["session_id"]
+
+    assert (await client.get(f"/api/chat/sessions/{session_id}", headers=b)).status_code == 404
+    assert (await client.delete(f"/api/chat/sessions/{session_id}", headers=b)).status_code == 404
+    assert (await client.delete(f"/api/chat/sessions/{session_id}", headers=a)).status_code == 204
+    assert (await client.get(f"/api/chat/sessions/{session_id}", headers=a)).status_code == 404

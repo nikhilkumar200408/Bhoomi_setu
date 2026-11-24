@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       setToken(res.access_token);
       setUser(res.user);
-      router.push("/dashboard");
+      router.push("/document-ai");
     },
     [router]
   );

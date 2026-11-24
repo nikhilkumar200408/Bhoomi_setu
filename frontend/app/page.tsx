@@ -11,8 +11,8 @@ export default function RootPage() {
 
   useEffect(() => {
     if (loading) return;
-    router.replace(user ? "/dashboard" : "/login");
+    router.replace(user ? "/document-ai" : "/login");
   }, [loading, user, router]);
 
-  return <LoadingState label="Loading BhoomiTrust AI…" />;
+  return <LoadingState label="Loading Document AI…" />;
 }

@@ -8,10 +8,9 @@ from fastapi.responses import FileResponse
 
 from .. import models, schemas
 from ..config import settings
-from ..database import documents_collection, records_collection
+from ..database import documents_collection
 from ..deps import get_current_user, require_roles, get_accessible_document, document_scope
 from ..services.audit.service import log_audit
-from ..services.pipeline import process_document, ProcessingError
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -30,15 +29,7 @@ def _document_out(document: dict) -> schemas.DocumentOut:
         file_size_bytes=document["file_size_bytes"], status=document["status"],
         uploaded_at=document["uploaded_at"],
         processed_at=document.get("processed_at"), error_message=document.get("error_message"),
-    )
-
-
-def _record_out(r: dict) -> schemas.LandRecordOut:
-    return schemas.LandRecordOut(
-        id=r["_id"], document_id=r["document_id"], status=r["status"],
-        overall_confidence=r["overall_confidence"], anomaly_score=r["anomaly_score"],
-        anomaly_level=r["anomaly_level"], anomaly_reasons=r["anomaly_reasons"],
-        created_at=r["created_at"], verified_at=r.get("verified_at"), verified_by=r.get("verified_by"),
+        docai_status=document.get("docai_status"),
     )
 
 
@@ -114,21 +105,6 @@ async def upload_documents_batch(
     return [_document_out(d) for d in documents]
 
 
-@router.post("/{document_id}/process", response_model=schemas.LandRecordOut)
-async def process(document_id: str, user: dict = Depends(require_roles(["DATA_ENTRY_OPERATOR"]))):
-    document = await get_accessible_document(document_id, user)
-    existing_record = await records_collection.find_one({"document_id": document_id})
-    if existing_record is not None:
-        return _record_out(existing_record)
-    try:
-        record = await process_document(document, user)
-    except ProcessingError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Processing failed: {e}")
-    return _record_out(record)
-
-
 @router.get("", response_model=List[schemas.DocumentOut])
 async def list_documents(user: dict = Depends(get_current_user)):
     cursor = documents_collection.find(document_scope(user)).sort("uploaded_at", -1)
@@ -138,9 +114,8 @@ async def list_documents(user: dict = Depends(get_current_user)):
 @router.get("/{document_id}", response_model=schemas.DocumentDetailOut)
 async def get_document(document_id: str, user: dict = Depends(get_current_user)):
     document = await get_accessible_document(document_id, user)
-    record = await records_collection.find_one({"document_id": document_id})
     base = _document_out(document)
-    return schemas.DocumentDetailOut(**base.model_dump(), land_record_id=record["_id"] if record else None)
+    return schemas.DocumentDetailOut(**base.model_dump())
 
 
 @router.get("/{document_id}/file")

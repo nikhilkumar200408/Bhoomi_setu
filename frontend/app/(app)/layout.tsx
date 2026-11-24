@@ -6,24 +6,20 @@ import { usePathname, useRouter } from "next/navigation";
 import clsx from "clsx";
 import { motion } from "framer-motion";
 import {
-  LayoutDashboard,
-  FileStack,
-  UploadCloud,
-  ClipboardCheck,
   History,
   ShieldCheck,
   LogOut,
   Search,
+  BrainCircuit,
+  MessageCircle,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useLanguage, Lang, LANG_LABELS } from "@/lib/language";
 import { LoadingState } from "@/components/ui/States";
 
 const NAV_ITEMS = [
-  { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },
-  { href: "/documents", key: "documents", icon: FileStack },
-  { href: "/documents/upload", key: "upload", icon: UploadCloud },
-  { href: "/records", key: "records", icon: ClipboardCheck },
+  { href: "/document-ai", key: "document_ai", icon: BrainCircuit },
+  { href: "/chat", key: "ai_chat", icon: MessageCircle, label: "AI Chat" },
   { href: "/audit", key: "audit_trail", icon: History },
 ];
 
@@ -49,14 +45,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <ShieldCheck size={16} className="text-accent" />
           </div>
           <div className="leading-tight">
-            <p className="font-serif font-semibold text-sm text-navy">BhoomiTrust AI</p>
-            <p className="text-[10px] text-ink/45">PS 26018</p>
+            <p className="font-serif font-semibold text-sm text-navy">Document AI</p>
+            <p className="text-[10px] text-ink/45">Evidence intelligence workspace</p>
           </div>
         </div>
 
         <nav className="flex-1 space-y-1">
           {NAV_ITEMS.map((item) => {
-            const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+            const active = pathname === item.href || pathname.startsWith(item.href + "/");
             const Icon = item.icon;
             return (
               <Link
@@ -75,7 +71,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   />
                 )}
                 <Icon size={16} />
-                {t(item.key)}
+                {item.label || t(item.key)}
               </Link>
             );
           })}
@@ -117,7 +113,7 @@ function TopBar() {
         onSubmit={(e) => {
           e.preventDefault();
           const q = (e.currentTarget.elements.namedItem("q") as HTMLInputElement).value.trim();
-          if (q) router.push(`/records?q=${encodeURIComponent(q)}`);
+          if (q) router.push(`/document-ai?q=${encodeURIComponent(q)}`);
         }}
         className="relative w-full max-w-sm"
       >
