@@ -197,6 +197,7 @@ export default function ChatPage() {
   if (loading) return <LoadingState label="Loading TrustLens AI Chat…" />;
 
   return (
+    <div className="space-y-5">
     <div className="flex min-h-[calc(100vh-7.5rem)] overflow-hidden rounded-2xl border border-line bg-white shadow-card">
       <aside className="hidden w-72 shrink-0 flex-col border-r border-line bg-slate-50/80 md:flex">
         <div className="flex items-center justify-between border-b border-line p-4">
@@ -377,9 +378,13 @@ export default function ChatPage() {
         <div className="border-t border-line p-3 text-[10px] leading-5 text-ink/40"><ShieldCheck size={12} className="mr-1 inline text-verified"/> Only retrieved source evidence is shown here.</div>
       </aside>
     </div>
-      <DocumentIntelligencePanel documents={indexedDocs} />
-      <FinancialCalculatorPanel />
-      <AnswerAnalyticsPanel answer={latestAnswer} />
+    {latestAnswer && (
+      <div className="space-y-5">
+        <DocumentIntelligencePanel documents={selectedDocs} />
+        <FinancialCalculatorPanel />
+        <AnswerAnalyticsPanel answer={latestAnswer} />
+      </div>
+    )}
     </div>
   );
 }
