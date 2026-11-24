@@ -727,7 +727,7 @@ export default function DocumentAIPage() {
         <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Question coverage</p><p className="mt-1 text-2xl font-semibold text-navy">{answer?.question_coverage_score == null ? "—" : `${Math.round(answer.question_coverage_score * 100)}%`}</p><p className="text-xs text-ink/45">Question terms found in returned evidence</p></CardContent></Card>
       </div>
 
-      {selectedDocs.some((doc) => reviewOpen[doc.id]) && (
+      {selectedDocs.some((doc) => structures[doc.id] && reviewOpen[doc.id]) && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
