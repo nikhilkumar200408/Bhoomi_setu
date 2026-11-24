@@ -43,7 +43,7 @@ export default function LoginPage() {
           <div className="h-9 w-9 rounded-full border-2 border-accent-light flex items-center justify-center">
             <ShieldCheck size={18} className="text-accent-light" />
           </div>
-          <span className="font-serif font-semibold text-lg tracking-tight">Document AI</span>
+          <span className="font-serif font-semibold text-lg tracking-tight">TrustLens AI</span>
         </motion.div>
 
         <motion.div
@@ -84,7 +84,7 @@ export default function LoginPage() {
         >
           <div className="lg:hidden flex items-center gap-2 mb-8">
             <ShieldCheck size={20} className="text-accent" />
-            <span className="font-serif font-semibold text-lg text-navy">Document AI</span>
+            <span className="font-serif font-semibold text-lg text-navy">TrustLens AI</span>
           </div>
 
           <h2 className="font-serif text-2xl text-navy mb-1">Sign in</h2>
