@@ -291,11 +291,11 @@ export default function ChatPage() {
                         </div>)}
                       </div>}
                     </div>}
-                    {!!message.answer?.conflicts?.length && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-semibold text-amber-900">Potential conflicts detected</p>{message.answer.conflicts.map((c,i) => <p key={i} className="mt-1 text-xs text-amber-900">{c.topic}: {c.explanation || c.status}</p>)}</div>}
+                    {!!message.answer?.claims?.length && <div className="rounded-lg border border-line bg-slate-50 p-3"><p className="mb-2 text-xs font-semibold text-navy">Claim verification breakdown</p><div className="space-y-2">{message.answer.claims.map(claim => <div key={claim.claim_id} className="flex flex-wrap items-start justify-between gap-2 text-xs"><span className="min-w-0 flex-1 text-ink/70">{claim.text}</span><span className="shrink-0 rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-navy">{claim.status.replaceAll("_"," ")} · {Math.round(claim.confidence*100)}%</span></div>)}</div></div>}{!!message.answer?.conflicts?.length && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-semibold text-amber-900">Potential conflicts detected</p>{message.answer.conflicts.map((c,i) => <p key={i} className="mt-1 text-xs text-amber-900">{c.topic}: {c.explanation || c.status}</p>)}</div>}
                     {message.answer?.missing_evidence?.map((item,i) => <p key={i} className="text-xs text-amber-700">{item.description}</p>)}
                     <div className="flex flex-wrap items-center gap-3 border-t border-line pt-2 text-[10px] text-ink/40">
                       <span>{message.answer?.faithfulness_score == null ? "Faithfulness not scored" : `Evidence grounding: ${Math.round(message.answer.faithfulness_score * 100)}%`}</span>
-                      {message.answer?.contextual_follow_up && <span>Conversation context used</span>}
+                      {message.answer?.question_coverage_score != null && <span>Question coverage: {Math.round(message.answer.question_coverage_score * 100)}%</span>}{message.answer?.contextual_follow_up && <span>Conversation context used</span>}
                       <span>{timeLabel(message.created_at)}</span>
                     </div>
                     {message.answer?.language_notice && <p className="text-xs text-amber-700">{message.answer.language_notice}</p>}
@@ -394,6 +394,8 @@ function DocumentIntelligencePanel({ documents }: { documents: Doc[] }) {
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState("");
+  const [contradictions, setContradictions] = useState<Record<string, any>[]>([]);
+  const [amendments, setAmendments] = useState<Record<string, any>[]>([]);
   const [filter, setFilter] = useState("ALL");
   const [activeNode, setActiveNode] = useState<string | null>(null);
   const ids = useMemo(() => documents.map(doc => doc.id), [documents]);
@@ -402,8 +404,15 @@ function DocumentIntelligencePanel({ documents }: { documents: Doc[] }) {
     if (!ids.length) { setData(null); return; }
     setLoading(true); setError("");
     try {
-      const response = await api.get<IntelligenceData>("/api/intelligence/overview?document_ids=" + encodeURIComponent(ids.join(",")));
+      const query = encodeURIComponent(ids.join(","));
+      const [response, conflictResponse, amendmentResponse] = await Promise.all([
+        api.get<IntelligenceData>("/api/intelligence/overview?document_ids=" + query),
+        api.get<{items: Record<string, any>[]}>(`/api/document-ai/contradictions?document_ids=${query}&limit=100`),
+        api.get<{items: Record<string, any>[]}>(`/api/document-ai/amendments?document_ids=${query}&limit=100`),
+      ]);
       setData(response);
+      setContradictions(conflictResponse.items || []);
+      setAmendments(amendmentResponse.items || []);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Document intelligence could not be loaded.");
     } finally { setLoading(false); }
@@ -479,6 +488,10 @@ function DocumentIntelligencePanel({ documents }: { documents: Doc[] }) {
             <p className="mt-2 text-[10px] text-ink/40">Confidence reflects extraction reliability, not legal correctness.</p>
           </div>
           <div><h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-navy"><ScanSearch size={15}/> Handwriting & Stamp Review Candidates</h3><div className="max-h-[520px] space-y-2 overflow-y-auto">{(data?.visual_review || []).map((item,index) => <article key={item.document_id + item.page + index} className="rounded-lg border border-amber-200 bg-amber-50/50 p-3"><div className="flex justify-between gap-2 text-xs"><strong>{item.filename}</strong><span>Page {item.page}</span></div>{item.signals.map((signal,i)=><p key={i} className="mt-1 text-xs text-ink/65">• {signal}</p>)}{item.review_candidates.length > 0 && <p className="mt-2 text-[10px] text-amber-800">{item.review_candidates.length} low-confidence OCR region(s) flagged.</p>}</article>)}{!data?.visual_review.length && <p className="text-xs text-ink/45">No current visual-review candidates.</p>}</div><p className="mt-2 text-[10px] text-ink/40">These are manual-review signals, not signature, handwriting or stamp authentication.</p></div>
+        </div>
+        <div className="grid gap-4 border-t border-line p-4 xl:grid-cols-2">
+          <div><h3 className="mb-2 text-sm font-semibold text-navy">Cross-document contradictions</h3>{contradictions.length ? contradictions.slice(0,30).map((item,index)=><article key={String(item.contradiction_id || index)} className="mb-2 rounded-lg border border-amber-200 bg-amber-50/50 p-3"><p className="text-xs font-semibold text-amber-900">{String(item.topic || "Potential inconsistency")} · {String(item.status || "REVIEW")}</p><p className="mt-1 text-[11px] text-ink/65">{String(item.explanation || "Compare the attached source passages before drawing a conclusion.")}</p>{Array.isArray(item.evidence) && item.evidence.slice(0,3).map((ev:any,i:number)=><p key={i} className="mt-1 text-[10px] text-ink/55">{String(ev.filename || "Source")} · Page {String(ev.page_number || "?")}: “{String(ev.quote || "")}”</p>)}</article>) : <p className="text-xs text-ink/45">No contradiction candidates returned for the selected documents.</p>}</div>
+          <div><h3 className="mb-2 text-sm font-semibold text-navy">Document amendment history</h3>{amendments.length ? amendments.slice(0,30).map((item,index)=><article key={String(item.amendment_id || index)} className="mb-2 rounded-lg border border-line p-3"><div className="flex justify-between gap-2 text-xs"><strong className="text-navy">{String(item.topic || "Amendment")}</strong><span className="text-ink/45">{String(item.status || "Review required")}</span></div><p className="mt-1 text-[11px] text-ink/55">Effective from: {String(item.effective_from || "Not established")}</p></article>) : <p className="text-xs text-ink/45">No amendment chain was detected in the selected documents.</p>}</div>
         </div>
         <p className="border-t border-line p-4 text-[10px] leading-5 text-ink/45">{data?.notice}</p>
       </>}
