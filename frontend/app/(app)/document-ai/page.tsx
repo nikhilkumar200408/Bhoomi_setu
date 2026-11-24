@@ -10,6 +10,7 @@ import { api, ApiError } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { LoadingState, ErrorState } from "@/components/ui/States";
+import { Network, Search, ScanSearch } from "lucide-react";
 
 type Doc = {
   id: string; filename: string; status: string; docai_status?: string; source_url?: string;
@@ -37,6 +38,23 @@ type Job = {
   status: string; pages_total?: number; pages_processed?: number;
   error?: { message?: string }; structure?: DocumentStructure;
 };
+type ExtractedPage = {
+  page: number; text: string; source_type: string;
+  extraction_metadata: Record<string, any>;
+  layout_blocks: { text: string; confidence?: number; bbox?: number[] }[];
+  tables: { header?: string[]; rows?: string[][] }[];
+};
+type ExtractionResponse = { page_count: number; structure: DocumentStructure; pages: ExtractedPage[] };
+type IntelligenceOverview = {
+  indexed_document_count: number; page_count: number; entity_count: number; relationship_count: number;
+  fields: { id: string; document_id: string; filename: string; page: number; field_type: string;
+    label: string; value: string; confidence: number; confidence_basis: string; status: string; quote: string }[];
+  visual_review: { document_id: string; filename: string; page: number; signals: string[];
+    review_candidates: {text:string;confidence:number}[] }[];
+  notice: string;
+};
+type IntelligenceSearchResult = { document_id: string; filename: string; page: number; score: number; snippet: string; source_type: string };
+
 type Evidence = {
   evidence_id: string; filename: string; page_number: number; quote: string; source_url?: string;
   relation?: string; verification?: { quote_found_in_source?: boolean };
@@ -77,6 +95,14 @@ export default function DocumentAIPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [indexedIds, setIndexedIds] = useState<string[]>([]);
   const [structures, setStructures] = useState<Record<string, DocumentStructure>>({});
+  const [extractedPages, setExtractedPages] = useState<Record<string, ExtractedPage[]>>({});
+  const [extractionLoading, setExtractionLoading] = useState<Record<string, boolean>>({});
+  const [intelligenceOverview, setIntelligenceOverview] = useState<IntelligenceOverview | null>(null);
+  const [intelligenceLoading, setIntelligenceLoading] = useState(false);
+  const [intelligenceQuery, setIntelligenceQuery] = useState("");
+  const [intelligenceResults, setIntelligenceResults] = useState<IntelligenceSearchResult[]>([]);
+  const [intelligenceSearching, setIntelligenceSearching] = useState(false);
+
   const [reviewOpen, setReviewOpen] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [indexing, setIndexing] = useState(false);
@@ -258,6 +284,61 @@ export default function DocumentAIPage() {
       setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Indexing failed.");
     } finally {
       setIndexing(false);
+    }
+  }
+
+
+  async function loadExtraction(documentId: string) {
+    if (extractedPages[documentId]?.length || extractionLoading[documentId]) return;
+    setExtractionLoading((current) => ({ ...current, [documentId]: true }));
+    try {
+      const result = await api.get<ExtractionResponse>("/api/document-ai/documents/" + documentId + "/extraction");
+      setStructures((current) => ({ ...current, [documentId]: result.structure }));
+      setExtractedPages((current) => ({ ...current, [documentId]: result.pages || [] }));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not load extracted pages. Try refreshing or re-indexing the document.");
+    } finally {
+      setExtractionLoading((current) => ({ ...current, [documentId]: false }));
+    }
+  }
+
+  async function toggleExtractionReview(documentId: string) {
+    const willOpen = !reviewOpen[documentId];
+    setReviewOpen((current) => ({ ...current, [documentId]: willOpen }));
+    if (willOpen) await loadExtraction(documentId);
+  }
+
+  useEffect(() => {
+    const ids = selectedDocs.filter((doc) => isIndexed(doc)).map((doc) => doc.id);
+    if (!ids.length) {
+      setIntelligenceOverview(null);
+      setIntelligenceResults([]);
+      return;
+    }
+    let active = true;
+    setIntelligenceLoading(true);
+    api.get<IntelligenceOverview>("/api/intelligence/overview?document_ids=" + encodeURIComponent(ids.join(",")))
+      .then((data) => { if (active) setIntelligenceOverview(data); })
+      .catch(() => { if (active) setIntelligenceOverview(null); })
+      .finally(() => { if (active) setIntelligenceLoading(false); });
+    return () => { active = false; };
+  }, [selectedDocs, indexedIds]);
+
+  async function searchIntelligence(event: React.FormEvent) {
+    event.preventDefault();
+    const ids = selectedDocs.filter((doc) => isIndexed(doc)).map((doc) => doc.id);
+    if (!intelligenceQuery.trim() || !ids.length) return;
+    setIntelligenceSearching(true);
+    try {
+      const result = await api.get<{ items: IntelligenceSearchResult[] }>(
+        "/api/intelligence/search?q=" + encodeURIComponent(intelligenceQuery.trim()) +
+        "&document_ids=" + encodeURIComponent(ids.join(",")) + "&limit=10"
+      );
+      setIntelligenceResults(result.items || []);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Intelligence search failed.");
+    } finally {
+      setIntelligenceSearching(false);
     }
   }
 
@@ -478,10 +559,12 @@ export default function DocumentAIPage() {
                           </span>
                         </span>
                       </label>
-                      {structures[doc.id] && (
-                        <button type="button" onClick={() => setReviewOpen((current) => ({ ...current, [doc.id]: !current[doc.id] }))}
-                          className="ml-8 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-ink/55 transition hover:bg-slate-100 hover:text-navy">
-                          <FileSearch size={12} /> {reviewOpen[doc.id] ? "Hide structure & quality" : "Review extracted structure & quality"}
+                      {indexed && (
+                        <button type="button" onClick={() => void toggleExtractionReview(doc.id)}
+                          disabled={!!extractionLoading[doc.id]}
+                          className="ml-8 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold text-accent transition hover:bg-accent-bg disabled:opacity-60">
+                          {extractionLoading[doc.id] ? <Loader2 size={12} className="animate-spin" /> : <FileSearch size={12} />}
+                          {extractionLoading[doc.id] ? "Loading extracted pages…" : reviewOpen[doc.id] ? "Hide extracted pages" : "View extracted pages"}
                         </button>
                       )}
                     </div>
@@ -558,6 +641,84 @@ export default function DocumentAIPage() {
         </Card>
       </div>
 
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Network size={17} /> Document Intelligence</CardTitle>
+          <p className="text-xs text-ink/50">Entity extraction, relationships, extraction confidence, visual review signals and page-level search — scoped to the documents selected above.</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!selectedDocs.some((doc) => isIndexed(doc)) ? (
+            <p className="rounded-card bg-slate-50 p-4 text-sm text-ink/55">Select and index documents to activate intelligence analysis.</p>
+          ) : intelligenceLoading ? (
+            <p className="flex items-center gap-2 text-sm text-ink/55"><Loader2 size={14} className="animate-spin" /> Analysing indexed pages…</p>
+          ) : intelligenceOverview ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  ["Indexed documents", intelligenceOverview.indexed_document_count],
+                  ["Source pages", intelligenceOverview.page_count],
+                  ["Entity candidates", intelligenceOverview.entity_count],
+                  ["Relationships", intelligenceOverview.relationship_count],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-card border border-line p-3">
+                    <p className="text-[11px] text-ink/50">{label}</p><p className="mt-1 text-xl font-semibold text-navy">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <form onSubmit={searchIntelligence} className="flex flex-wrap gap-2">
+                <input value={intelligenceQuery} onChange={(event) => setIntelligenceQuery(event.target.value)}
+                  placeholder="Search extracted content, e.g. owner name, khasra number, agreement date"
+                  className="min-w-[220px] flex-1 rounded-card border border-line bg-white px-3 py-2 text-sm text-navy" />
+                <Button type="submit" variant="secondary" disabled={!intelligenceQuery.trim() || intelligenceSearching}>
+                  {intelligenceSearching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                  Search pages
+                </Button>
+              </form>
+              {intelligenceResults.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-navy">Search results</h3>
+                  {intelligenceResults.map((item, index) => (
+                    <div key={item.document_id + "-" + item.page + "-" + index} className="rounded-card border border-line p-3">
+                      <div className="flex justify-between gap-3 text-xs"><strong className="text-navy">{item.filename}</strong><span className="text-ink/50">Page {item.page} · {item.source_type}</span></div>
+                      <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-ink/70">{item.snippet}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-navy">Extracted field candidates</h3>
+                  {intelligenceOverview.fields.slice(0, 12).map((field) => (
+                    <div key={field.id} className="rounded-card border border-line p-3">
+                      <div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold text-navy">{field.label}</span><span className="text-[11px] text-ink/50">Page {field.page} · {Math.round(field.confidence * 100)}%</span></div>
+                      <p className="mt-1 break-words text-sm text-ink/80">{field.value}</p>
+                      <p className="mt-1 text-[11px] text-ink/45">{field.filename} · {field.status.replaceAll("_", " ")}</p>
+                      <p className="mt-1 text-xs text-ink/55">“{field.quote}”</p>
+                    </div>
+                  ))}
+                  {!intelligenceOverview.fields.length && <p className="text-xs text-ink/45">No supported field patterns detected in the selected pages.</p>}
+                </div>
+                <div className="space-y-2">
+                  <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-navy"><ScanSearch size={14} /> Visual review candidates</h3>
+                  {intelligenceOverview.visual_review.slice(0, 12).map((item, index) => (
+                    <div key={item.document_id + "-" + item.page + "-" + index} className="rounded-card border border-amber-200 bg-amber-50/50 p-3">
+                      <p className="text-xs font-semibold text-navy">{item.filename} · Page {item.page}</p>
+                      {item.signals.map((signal, i) => <p key={i} className="mt-1 text-xs text-ink/70">• {signal}</p>)}
+                      {item.review_candidates.length > 0 && <p className="mt-1 text-[11px] text-amber-800">{item.review_candidates.length} low-confidence OCR region(s) need manual review</p>}
+                    </div>
+                  ))}
+                  {!intelligenceOverview.visual_review.length && <p className="text-xs text-ink/45">No low-confidence OCR review candidates found. This is not signature or stamp authentication.</p>}
+                </div>
+              </div>
+              <p className="text-[11px] text-ink/45">{intelligenceOverview.notice} Confidence reflects extraction reliability, not legal correctness.</p>
+            </>
+          ) : (
+            <p className="text-xs text-ink/50">Intelligence summary is unavailable. Refresh the workspace and try again.</p>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
         <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Documents</p><p className="mt-1 text-2xl font-semibold text-navy">{documents.length}</p><p className="text-xs text-ink/45">{documents.filter(isIndexed).length} indexed</p></CardContent></Card>
         <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Claims checked</p><p className="mt-1 text-2xl font-semibold text-navy">{answer?.claims.length ?? 0}</p><p className="text-xs text-ink/45">{answer?.claims.filter(c => c.status === "SUPPORTED").length ?? 0} fully supported</p></CardContent></Card>
@@ -566,7 +727,7 @@ export default function DocumentAIPage() {
         <Card><CardContent className="py-4"><p className="text-xs text-ink/50">Question coverage</p><p className="mt-1 text-2xl font-semibold text-navy">{answer?.question_coverage_score == null ? "—" : `${Math.round(answer.question_coverage_score * 100)}%`}</p><p className="text-xs text-ink/45">Question terms found in returned evidence</p></CardContent></Card>
       </div>
 
-      {selectedDocs.some((doc) => structures[doc.id] && reviewOpen[doc.id]) && (
+      {selectedDocs.some((doc) => reviewOpen[doc.id]) && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -694,6 +855,19 @@ export default function DocumentAIPage() {
               Note: section grouping is heuristic. OCR confidence measures recognition confidence, not factual correctness.
               Always verify flagged text against the original page.
             </p>
+            {selectedDocs.filter((doc) => reviewOpen[doc.id] && extractedPages[doc.id]).map((doc) => (
+              <div key={doc.id + "-extracted-pages"} className="space-y-3 border-t border-line pt-4">
+                <h3 className="text-sm font-semibold text-navy">Extracted page text · {doc.filename}</h3>
+                {extractedPages[doc.id].map((page) => (
+                  <details key={page.page} className="rounded-card border border-line bg-slate-50 p-3" open={extractedPages[doc.id].length <= 2}>
+                    <summary className="cursor-pointer text-xs font-semibold text-navy">
+                      Page {page.page} · {page.source_type} · {page.text.trim().split(/\s+/).filter(Boolean).length} words
+                    </summary>
+                    <pre className="mt-3 max-h-[420px] overflow-auto whitespace-pre-wrap break-words font-sans text-xs leading-6 text-ink/80">{page.text || "No text extracted from this page."}</pre>
+                  </details>
+                ))}
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}
