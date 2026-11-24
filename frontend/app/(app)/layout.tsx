@@ -20,7 +20,7 @@ import { LoadingState } from "@/components/ui/States";
 
 const NAV_ITEMS = [
   { href: "/document-ai", key: "document_ai", icon: BrainCircuit },
-  { href: "/chat", key: "ai_chat", icon: MessageCircle, label: "AI Chat" },
+  { href: "/chat", key: "ai_chat", icon: MessageCircle, label: "Ask TrustLens AI" },
   { href: "/compliance", key: "compliance", icon: ClipboardCheck, label: "Verification & Compliance" },
   { href: "/review-dashboard", key: "review_dashboard", icon: LayoutDashboard, label: "Review Dashboard" },
   { href: "/audit", key: "audit_trail", icon: History },
